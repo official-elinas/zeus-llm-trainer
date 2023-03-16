@@ -3,18 +3,12 @@ import json
 
 import torch
 from peft import PeftModel, LoraConfig
+from transformers import LLaMATokenizer, LLaMAForCausalLM
 
-import transformers
+tokenizer = LLaMATokenizer.from_pretrained("decapoda-research/llama-13b-hf")
 
-assert (
-    "LlamaTokenizer" in transformers._import_structure["models.llama"]
-), "LLaMA is now in HuggingFace's main branch.\nPlease reinstall it: pip uninstall transformers && pip install git+https://github.com/huggingface/transformers.git"
-from transformers import LlamaTokenizer, LlamaForCausalLM
-
-tokenizer = LlamaTokenizer.from_pretrained("decapoda-research/llama-7b-hf")
-
-base_model = LlamaForCausalLM.from_pretrained(
-    "decapoda-research/llama-7b-hf",
+base_model = LLaMAForCausalLM.from_pretrained(
+    "decapoda-research/llama-13b-hf",
     load_in_8bit=False,
     torch_dtype=torch.float16,
     device_map={"": "cpu"},
@@ -22,7 +16,7 @@ base_model = LlamaForCausalLM.from_pretrained(
 
 lora_model = PeftModel.from_pretrained(
     base_model,
-    "tloen/alpaca-lora-7b",
+    "samwit/alpaca13B-lora",
     device_map={"": "cpu"},
     torch_dtype=torch.float16,
 )
@@ -37,10 +31,10 @@ lora_model.train(False)
 lora_model_sd = lora_model.state_dict()
 
 params = {
-    "dim": 4096,
+    "dim": 5120,
     "multiple_of": 256,
-    "n_heads": 32,
-    "n_layers": 32,
+    "n_heads": 40,
+    "n_layers": 40,
     "norm_eps": 1e-06,
     "vocab_size": -1,
 }
