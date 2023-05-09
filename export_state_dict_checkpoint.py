@@ -1,19 +1,20 @@
-import os
 import json
+import os
 
 import torch
-from peft import PeftModel, LoraConfig
 import transformers
+from peft import PeftModel
+from transformers import LlamaForCausalLM, LlamaTokenizer  # noqa: E402
 
+BASE_MODEL = os.environ.get("BASE_MODEL", None)
 assert (
-    "LlamaTokenizer" in transformers._import_structure["models.llama"]
-), "LLaMA is now in HuggingFace's main branch.\nPlease reinstall it: pip uninstall transformers && pip install git+https://github.com/huggingface/transformers.git"
-from transformers import LlamaTokenizer, LlamaAForCausalLM
+    BASE_MODEL
+), "Please specify a value for BASE_MODEL environment variable, e.g. `export BASE_MODEL=huggyllama/llama-7b`"  # noqa: E501
 
-tokenizer = LlamaTokenizer.from_pretrained("decapoda-research/llama-30b-hf")
+tokenizer = LlamaTokenizer.from_pretrained(BASE_MODEL)
 
 base_model = LlamaForCausalLM.from_pretrained(
-    "decapoda-research/llama-30b-hf",
+    BASE_MODEL,
     load_in_8bit=False,
     torch_dtype=torch.float16,
     device_map={"": "cpu"},
@@ -21,7 +22,7 @@ base_model = LlamaForCausalLM.from_pretrained(
 
 lora_model = PeftModel.from_pretrained(
     base_model,
-    "baseten/alpaca-30b",
+    "tloen/alpaca-lora-7b",
     device_map={"": "cpu"},
     torch_dtype=torch.float16,
 )
@@ -36,10 +37,10 @@ lora_model.train(False)
 lora_model_sd = lora_model.state_dict()
 
 params = {
-    "dim": 6656,
+    "dim": 4096,
     "multiple_of": 256,
-    "n_heads": 52,
-    "n_layers": 60,
+    "n_heads": 32,
+    "n_layers": 32,
     "norm_eps": 1e-06,
     "vocab_size": -1,
 }
@@ -48,22 +49,28 @@ n_heads = params["n_heads"]
 dim = params["dim"]
 dims_per_head = dim // n_heads
 base = 10000.0
-inv_freq = 1.0 / (base ** (torch.arange(0, dims_per_head, 2).float() / dims_per_head))
+inv_freq = 1.0 / (
+    base ** (torch.arange(0, dims_per_head, 2).float() / dims_per_head)
+)
 
 
 def permute(w):
     return (
-        w.view(n_heads, dim // n_heads // 2, 2, dim).transpose(1, 2).reshape(dim, dim)
+        w.view(n_heads, dim // n_heads // 2, 2, dim)
+        .transpose(1, 2)
+        .reshape(dim, dim)
     )
 
 
 def unpermute(w):
     return (
-        w.view(n_heads, 2, dim // n_heads // 2, dim).transpose(1, 2).reshape(dim, dim)
+        w.view(n_heads, 2, dim // n_heads // 2, dim)
+        .transpose(1, 2)
+        .reshape(dim, dim)
     )
 
 
-def translate_state_dict_key(k):
+def translate_state_dict_key(k):  # noqa: C901
     k = k.replace("base_model.model.", "")
     if k == "model.embed_tokens.weight":
         return "tok_embeddings.weight"
