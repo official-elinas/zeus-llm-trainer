@@ -87,16 +87,23 @@ def train(
         base_model
     ), "Please specify a --base_model, e.g. --base_model='huggyllama/llama-7b'"
     gradient_accumulation_steps = batch_size // micro_batch_size
+    
+    print(f"Batch size {batch_size}")
+    print(f"Micro batch size {micro_batch_size}")
+    print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
 
     prompter = Prompter(prompt_template_name)
 
     device_map = "auto"
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     ddp = world_size != 1
+    print(f'ddp: {ddp}')
     if ddp:
+        print('is ddp')
         device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)}
         gradient_accumulation_steps = gradient_accumulation_steps // world_size
-
+        print(f"Gradient accumulation steps new: {gradient_accumulation_steps}")
+        
     # Check if parameter passed or if set within environ
     use_wandb = len(wandb_project) > 0 or (
         "WANDB_PROJECT" in os.environ and len(os.environ["WANDB_PROJECT"]) > 0
@@ -193,10 +200,12 @@ def train(
         checkpoint_name = os.path.join(
             resume_from_checkpoint, "pytorch_model.bin"
         )  # Full checkpoint
+        print("Resuming from full checkpoint")
         if not os.path.exists(checkpoint_name):
             checkpoint_name = os.path.join(
                 resume_from_checkpoint, "adapter_model.bin"
             )  # only LoRA model - LoRA config above has to fit
+            print("Actually resuming from LoRA adapter model")
             resume_from_checkpoint = (
                 False  # So the trainer won't try loading its state
             )
@@ -229,6 +238,8 @@ def train(
         model.is_parallelizable = True
         model.model_parallel = True
 
+
+    # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.Trainer
     trainer = transformers.Trainer(
         model=model,
         train_dataset=train_data,
@@ -236,21 +247,23 @@ def train(
         args=transformers.TrainingArguments(
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
-            warmup_steps=100,
+            warmup_steps=50,  # 0.06 coef rec. by MS
             num_train_epochs=num_epochs,
             learning_rate=learning_rate,
             fp16=True,
-            logging_steps=10,
+            # bf16=True,
+            logging_steps=1,
             optim="adamw_torch",
             evaluation_strategy="steps" if val_set_size > 0 else "no",
             save_strategy="steps",
             eval_steps=200 if val_set_size > 0 else None,
             save_steps=200,
             output_dir=output_dir,
-            save_total_limit=3,
+            save_total_limit=10,
             load_best_model_at_end=True if val_set_size > 0 else False,
             ddp_find_unused_parameters=False if ddp else None,
             group_by_length=group_by_length,
+            # ddp_timeout=1800,
             report_to="wandb" if use_wandb else None,
             run_name=wandb_run_name if use_wandb else None,
         ),
@@ -260,18 +273,19 @@ def train(
     )
     model.config.use_cache = False
 
-    old_state_dict = model.state_dict
-    model.state_dict = (
-        lambda self, *_, **__: get_peft_model_state_dict(
-            self, old_state_dict()
-        )
-    ).__get__(model, type(model))
+    # Not needed
+    # old_state_dict = model.state_dict
+    # model.state_dict = (
+    #     lambda self, *_, **__: get_peft_model_state_dict(
+    #         self, old_state_dict()
+    #     )
+    # ).__get__(model, type(model))
 
     if torch.__version__ >= "2" and sys.platform != "win32":
         model = torch.compile(model)
 
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
-
+    
     model.save_pretrained(output_dir)
 
     print(
