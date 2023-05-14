@@ -215,22 +215,26 @@ def train(
         model.is_parallelizable = True
         model.model_parallel = True
 
-    parser = argparse.ArgumentParser(description='Additional HF Arguments allowed to be passed')
+    parser = argparse.ArgumentParser(description='Additional non-default HF arguments that can be passed')
 
     # Parse the arguments and create a TrainingArguments object
     args, unknown_args = parser.parse_known_args()
+
+    # TODO: remove when done testing
     print(f'args: {args}')
     print(f'unknown_args: {unknown_args}')
 
-    # ignore program specific arguments as they can't be used in the trainer
-    program_args = ['base_model', 'batch_size', 'data_path', 'cutoff_len', 'val_set_size', 'lora_target_modules', 'lora_r', 'lora_alpha', 'train_on_inputs'
-    ]
+    # ignore program specific arguments as they can't be used in the trainer args
+    program_args = ['base_model', 'batch_size', 'data_path', 'cutoff_len', 'val_set_size', 'lora_target_modules',
+                    'lora_r', 'lora_alpha', 'train_on_inputs']
 
-
+    # TODO: this can be empty as we removed the default parameter
     training_args_dict = {
         **{arg: getattr(args, arg) for arg in vars(args)},
     }
 
+    # Note: The user is required to pass valid non-default HF trainer args otherwise the training will fail to start
+    # Additionally, not all arguments work together, so it's important to be aware of what is being passed together
     for arg in unknown_args:
         if arg.startswith('--'):
             arg_name = arg[2:]
@@ -240,12 +244,22 @@ def train(
                 if '=' in arg:
                     arg_value = arg.split('=', 1)[1]
                 training_args_dict[arg_name.split('=')[0]] = arg_value
+    # TODO: need to parse this and move it into the additional HF parameters used - remove debugging when done
     print(json.dumps(training_args_dict, indent=4))
+
+    # debug
+    print('Using args: ')
+    for args in training_args_dict:
+        print(args)
 
     training_args = TrainingArguments(**training_args_dict)
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
         # using local rank to print once
-        # TODO: print passed HF trainer arguments here
+        print(
+            f"Additional HF params used:\n"
+
+        )
+        # TODO: print additional passed HF trainer arguments here
         pass
 
     # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.Trainer
