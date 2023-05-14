@@ -29,20 +29,28 @@ from utils.prompter import Prompter
 
 # TODO: calculate based on per_dev_batch and gradient_accumulation_steps, not "batch_size and micro_batch_size"
 def train(
-    # model/data params
+    # model/data params - required
     base_model: str = "",
-    data_path: str = "dataset.json",
+    data_path: str = "",
+    # HF Trainer params
     output_dir: str = "./lora-alpaca",
-    # training hyperparams
-    batch_size: int = 128,
-    per_device_train_batch_size: int = 4,
-    gradient_accumulation_steps: int = 0,
     num_train_epochs: int = 3,
     learning_rate: float = 3e-4,
+    per_device_train_batch_size: int = 4,
+    save_and_eval_steps: int = 100,
+    warmup_steps: int = 100,
+    save_total_limit: int = 5,
+    logging_steps: int = 5,
+    group_by_length: bool = False,  # faster, but produces an odd training loss curve
+    # TODO: use
+    gradient_accumulation_steps: int = 0,
+    # alpaca-lora training hyperparams
+    # TODO: drop
+    batch_size: int = 128,
     cutoff_len: int = 256,
     val_set_size: int = 2000,
     use_xformers: bool = False,
-    # lora hyperparams
+    # lora-specific hyperparams
     lora_r: int = 8,
     lora_alpha: int = 16,
     lora_dropout: float = 0.05,
@@ -53,7 +61,6 @@ def train(
     # llm hyperparams
     train_on_inputs: bool = True,  # if False, masks out inputs in loss
     add_eos_token: bool = False,
-    group_by_length: bool = False,  # faster, but produces an odd training loss curve
     # wandb params
     wandb_project: str = "",
     wandb_run_name: str = "",
@@ -96,8 +103,8 @@ def train(
     assert (
         base_model
     ), "Please specify a --base_model, e.g. --base_model='huggyllama/llama-7b'"
-    # TODO,make cleaner, extract as func?
 
+    # TODO: use different calculation with per_device and gradient_steps only - also apply to DDP
     # ensure gradient accumulation steps is never <1
     gradient_accumulation_steps = batch_size / per_device_train_batch_size
     if gradient_accumulation_steps < 1:
@@ -249,24 +256,23 @@ def train(
         # TODO: print passed HF trainer arguments here
         pass
 
-
     # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.Trainer
     args=transformers.TrainingArguments(
         per_device_train_batch_size=per_device_train_batch_size, #rename batch per dev
         # gradient_accumulation_steps=gradient_accumulation_steps,
         # gradient_accumulation_steps=8,
-        warmup_steps=50,  # 0.06 coef rec. by MS
+        warmup_steps=warmup_steps,  # 0.06 coef rec. by MS
         num_train_epochs=num_train_epochs,
         learning_rate=learning_rate,
         fp16=True,
-        logging_steps=1,
+        logging_steps=logging_steps,
         optim="adamw_torch",
         evaluation_strategy="steps" if val_set_size > 0 else "no",
         save_strategy="steps",
-        eval_steps=50 if val_set_size > 0 else None,
-        save_steps=50,
+        eval_steps=save_and_eval_steps if val_set_size > 0 else None,
+        save_steps=save_and_eval_steps,
         output_dir=output_dir,
-        save_total_limit=10,
+        save_total_limit=save_total_limit,
         load_best_model_at_end=True if val_set_size > 0 else False,
         ddp_find_unused_parameters=False if ddp else None,
         group_by_length=group_by_length,
@@ -275,16 +281,6 @@ def train(
         run_name=wandb_run_name if use_wandb else None,
         # sharded_ddp="simple"
         **vars(training_args)
-    )
-
-    trainer = transformers.Trainer(
-        model=model,
-        train_dataset=train_data,
-        eval_dataset=val_data,
-        args=args,
-        data_collator=transformers.DataCollatorForSeq2Seq(
-            tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True
-        )
     )
 
     print(f"REAL PER DEVICE BATCH SIZE {args.per_device_train_batch_size}")
@@ -333,9 +329,19 @@ def train(
         train_data = data["train"].shuffle().map(generate_and_tokenize_prompt)
         val_data = None
 
+    trainer = transformers.Trainer(
+        model=model,
+        train_dataset=train_data,
+        eval_dataset=val_data,
+        args=args,
+        data_collator=transformers.DataCollatorForSeq2Seq(
+            tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True
+        )
+    )
+
     model.config.use_cache = False
 
-    # Not needed
+    # TODO: replace with function that saves LoRA adapters
     # old_state_dict = model.state_dict
     # model.state_dict = (
     #     lambda self, *_, **__: get_peft_model_state_dict(
