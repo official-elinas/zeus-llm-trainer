@@ -87,9 +87,9 @@ def train(
                                                                            gradient_accumulation_steps,
                                                                            num_devices=world_size)
     else:
-        gradient_accumulation_steps = calculate_batches(global_batch_size,
-                                                        per_device_train_batch_size,
-                                                        gradient_accumulation_steps)
+        gradient_accumulation_steps, global_batch_size = calculate_batches(global_batch_size,
+                                                                           per_device_train_batch_size,
+                                                                           gradient_accumulation_steps)
 
     # Done - add: Global batch size = Local batch size per device * Number of devices * Gradient accumulation steps
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
@@ -289,9 +289,6 @@ def train(
         # sharded_ddp="simple"
         # **vars(training_args)
     )
-
-    print(f"REAL PER DEVICE BATCH SIZE {args.per_device_train_batch_size}")
-    print(f"REAL Gradient accumulation steps: {args.gradient_accumulation_steps}")
 
     if data_path.endswith(".json") or data_path.endswith(".jsonl"):
         data = load_dataset("json", data_files=data_path)
