@@ -9,6 +9,7 @@
 **TODO**
 - [ ] Use batch per device and gradient accumulation steps to calculate global steps
 - [ ] Save LoRA adapter correctly every checkpoint instead of the full model
+- [ ] Working Deepspeed support (currently untested)
 - [ ] Implement loading arguments from JSON
 
 This repository contains code for reproducing the [Stanford Alpaca](https://github.com/tatsu-lab/stanford_alpaca) results using [low-rank adaptation (LoRA)](https://arxiv.org/pdf/2106.09685.pdf).
@@ -43,7 +44,7 @@ Example usage:
 
 ```bash
 python finetune.py \
-    --base_model 'decapoda-research/llama-7b-hf' \
+    --base_model 'elinas/llama-7b-hf-transformers-4.29' \
     --data_path 'yahma/alpaca-cleaned' \
     --output_dir './lora-alpaca'
 ```
@@ -52,8 +53,8 @@ We can also tweak our hyperparameters:
 
 ```bash
 python finetune.py \
-    --base_model 'decapoda-research/llama-7b-hf' \
-    --data_path 'yahma/alpaca-cleaned' \
+    --base_model 'elinas/llama-7b-hf-transformers-4.29' \
+    --data_path 'dataset.json' \
     --output_dir './lora-alpaca' \
     --batch_size 128 \
     --micro_batch_size 4 \
@@ -67,6 +68,24 @@ python finetune.py \
     --lora_target_modules '[q_proj,v_proj]' \
     --train_on_inputs \
     --group_by_length
+```
+
+Example DDP Usage (2 GPUs, adjust top line based on GPU count):
+```bash
+OMP_NUM_THREADS=12 WORLD_SIZE=2 torchrun --nproc_per_node=2 --master_port=1234 finetune.py \
+    --base_model='elinas/llama-7b-hf-transformers-4.29' \
+    --data_path='dataset.json' \
+    --num_train_epochs=3 \
+    --cutoff_len=2048 \
+    --group_by_length \
+    --val_set_size=2000 \
+    --output_dir='./7b-lora' \
+    --lora_target_modules='[q_proj,v_proj,k_proj,o_proj]' \
+    --lora_r=128 \
+    --lora_alpha=256 \
+    --gradient_accumulation_steps=8 \
+    --per_device_train_batch_size=1 \
+    --train_on_inputs=True
 ```
 
 ### Inference (`generate.py`)
