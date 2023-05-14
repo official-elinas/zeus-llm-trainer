@@ -3,8 +3,13 @@
 - 2023/05/14 - **Continuing rewrite**
     - Added more defaults and option to pass additional non-defined HF Trainer arguments. 
     - Also implemented xformers as an option to replace the default attention method.
+    - Argument name changes, will be documented.
 - 2023/05/08 - **Reworking trainer**
 
+**TODO**
+- [ ] Use batch per device and gradient accumulation steps to calculate global steps
+- [ ] Save LoRA adapter correctly every checkpoint instead of the full model
+- [ ] Implement loading arguments from JSON
 
 This repository contains code for reproducing the [Stanford Alpaca](https://github.com/tatsu-lab/stanford_alpaca) results using [low-rank adaptation (LoRA)](https://arxiv.org/pdf/2106.09685.pdf).
 We provide an Instruct model of similar quality to `text-davinci-003` that can run [on a Raspberry Pi](https://twitter.com/miolini/status/1634982361757790209) (for research),
