@@ -214,15 +214,14 @@ def train(
         model.is_parallelizable = True
         model.model_parallel = True
 
-
-    
-
+    parser = argparse.ArgumentParser(description='Additional HF Arguments allowed to be passed')
 
     # Parse the arguments and create a TrainingArguments object
     args, unknown_args = parser.parse_known_args()
     print(f'args: {args}')
     print(f'unknown_args: {unknown_args}')
 
+    # ignore program specific arguments as they can't be used in the trainer
     program_args = ['base_model', 'batch_size', 'data_path', 'cutoff_len', 'val_set_size', 'lora_target_modules', 'lora_r', 'lora_alpha', 'train_on_inputs'
     ]
 
