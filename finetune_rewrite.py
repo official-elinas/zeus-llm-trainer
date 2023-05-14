@@ -73,18 +73,36 @@ def train(
         from utils.monkeypatches import apply_xformers_monkeypatches
         apply_xformers_monkeypatches()
 
+    prompter = Prompter(prompt_template_name)
+
+    device_map = "auto"
+    world_size = int(os.environ.get("WORLD_SIZE", 1))
+    ddp = world_size != 1
+    if ddp:
+        device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)}
+        gradient_accumulation_steps, global_batch_size = calculate_batches(global_batch_size,
+                                                                           world_size,
+                                                                           gradient_accumulation_steps,
+                                                                           num_devices=world_size)
+    else:
+        gradient_accumulation_steps = calculate_batches(global_batch_size,
+                                                        per_device_train_batch_size,
+                                                        gradient_accumulation_steps)
+
+    # Done - add: Global batch size = Local batch size per device * Number of devices * Gradient accumulation steps
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
         print(
             f"Training Alpaca-LoRA model with params:\n"
             f"base_model: {base_model}\n"
             f"data_path: {data_path}\n"
             f"output_dir: {output_dir}\n"
-            f"batch_size: {batch_size}\n"
+            f"global batch_size: {global_batch_size}\n"
             f"per_device_train_batch_size: {per_device_train_batch_size}\n"
             f"num_train_epochs: {num_train_epochs}\n"
             f"learning_rate: {learning_rate}\n"
             f"cutoff_len: {cutoff_len}\n"
             f"val_set_size: {val_set_size}\n"
+            f"using DDP: {ddp}\n"
             f"lora_r: {lora_r}\n"
             f"lora_alpha: {lora_alpha}\n"
             f"lora_dropout: {lora_dropout}\n"
@@ -257,10 +275,9 @@ def train(
         pass
 
     # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.Trainer
-    args=transformers.TrainingArguments(
-        per_device_train_batch_size=per_device_train_batch_size, #rename batch per dev
-        # gradient_accumulation_steps=gradient_accumulation_steps,
-        # gradient_accumulation_steps=8,
+    args = transformers.TrainingArguments(
+        per_device_train_batch_size=per_device_train_batch_size,
+        gradient_accumulation_steps=gradient_accumulation_steps,
         warmup_steps=warmup_steps,  # 0.06 coef rec. by MS
         num_train_epochs=num_train_epochs,
         learning_rate=learning_rate,
@@ -359,6 +376,29 @@ def train(
     print(
         "\n If there's a warning about missing keys above, please disregard :)"
     )
+
+
+def calculate_batches(global_batch_size=0, per_device_train_batch_size=1, gradient_accumulation_steps=1, num_devices=1):
+    """
+    Calculates the gradient_accumulation_steps to use depending on if the global_batch_size is defined or return
+    the gradient_accumulation_steps if it's the default of 0 meaning it was not used as a parameter
+
+    Either gradient_accumulation_steps or global_batch_size must be defined to return the gradient_accumulation_steps
+    """
+    if global_batch_size != 0:
+        calculated_gradient_accumulation_steps = global_batch_size / per_device_train_batch_size
+        if calculated_gradient_accumulation_steps < 1:
+            calculated_gradient_accumulation_steps = 1
+            return calculated_gradient_accumulation_steps, global_batch_size
+        else:
+            calculated_gradient_accumulation_steps = global_batch_size // per_device_train_batch_size
+            return calculated_gradient_accumulation_steps, global_batch_size
+    elif gradient_accumulation_steps != 0:
+        # Local batch size per device * Number of devices * Gradient accumulation steps
+        global_batch_size = per_device_train_batch_size * num_devices * gradient_accumulation_steps
+        return gradient_accumulation_steps, global_batch_size
+    else:
+        raise Exception('--gradient_accumulation_steps or --global_batch_size is not defined as a parameter!')
 
 
 if __name__ == "__main__":
