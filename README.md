@@ -1,5 +1,8 @@
 # 🦙🌲🤏 Alpaca-LoRA
 
+- 2023/05/14 - **Continuing rewrite**
+    - Added more defaults and option to pass additional non-defined HF Trainer arguments. 
+    - Also implemented xformers as an option to replace the default attention method.
 - 2023/05/08 - **Reworking trainer**
 
 
