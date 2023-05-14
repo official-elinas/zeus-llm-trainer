@@ -31,7 +31,7 @@ from utils.prompter import Prompter
 def train(
     # model/data params - required
     base_model: str = "",
-    data_path: str = "",
+    data_path: str = "dataset.json",
     # HF Trainer params
     output_dir: str = "./lora-alpaca",
     num_train_epochs: int = 3,
@@ -41,13 +41,14 @@ def train(
     warmup_steps: int = 100,
     save_total_limit: int = 5,
     logging_steps: int = 5,
-    group_by_length: bool = False,  # faster, but produces an odd training loss curve
-    # TODO: use
+    # faster, but produces an odd training loss curve - see HF Trainer docs
+    group_by_length: bool = False,
+    # use global batch size OR gradient accumulation steps, not both
+    # one must NOT be 0
     gradient_accumulation_steps: int = 0,
     # alpaca-lora training hyperparams
-    # TODO: drop
-    batch_size: int = 128,
-    cutoff_len: int = 256,
+    global_batch_size: int = 0,
+    cutoff_len: int = 512,
     val_set_size: int = 2000,
     use_xformers: bool = False,
     # lora-specific hyperparams
@@ -69,6 +70,7 @@ def train(
     resume_from_checkpoint: str = None,  # either training checkpoint or final adapter
     prompt_template_name: str = "alpaca",  # The prompt template to use, will default to alpaca.
 ):
+    # TODO: option to load config from json
     if use_xformers:
         from utils.monkeypatches import apply_xformers_monkeypatches
         apply_xformers_monkeypatches()
@@ -120,35 +122,7 @@ def train(
         )
     assert (
         base_model
-    ), "Please specify a --base_model, e.g. --base_model='huggyllama/llama-7b'"
-
-    # TODO: use different calculation with per_device and gradient_steps only - also apply to DDP
-    # ensure gradient accumulation steps is never <1
-    gradient_accumulation_steps = batch_size / per_device_train_batch_size
-    if gradient_accumulation_steps < 1:
-        gradient_accumulation_steps = 1
-    else:
-        gradient_accumulation_steps = batch_size // per_device_train_batch_size
-    
-    print(f"Batch size {batch_size}")
-    print(f"Per dev train batch size {per_device_train_batch_size}")
-    print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
-
-    prompter = Prompter(prompt_template_name)
-
-    device_map = "auto"
-    world_size = int(os.environ.get("WORLD_SIZE", 1))
-    ddp = world_size != 1
-    print(f'DDP: {ddp}')
-    if ddp:
-        device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)}
-        # ensure gradient accumulation steps is never <1
-        gradient_accumulation_steps = batch_size / world_size
-        if gradient_accumulation_steps < 1:
-            gradient_accumulation_steps = 1
-        else:
-            gradient_accumulation_steps = gradient_accumulation_steps // world_size
-        print(f"Gradient accumulation steps new: {gradient_accumulation_steps}")
+    ), "Please specify a --base_model, e.g. --base_model='elinas/llama-7b-hf-transformers-4.29'"
         
     # Check if parameter passed or if set within environ
     use_wandb = len(wandb_project) > 0 or (
