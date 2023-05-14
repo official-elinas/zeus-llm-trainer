@@ -27,7 +27,7 @@ from transformers import LlamaForCausalLM, LlamaTokenizer
 
 from utils.prompter import Prompter
 
-# TODO: ADD ARGS HERE???
+# TODO: calculate based on per_dev_batch and gradient_accumulation_steps, not "batch_size and micro_batch_size"
 def train(
     # model/data params
     base_model: str = "",
@@ -83,7 +83,7 @@ def train(
             f"lora_dropout: {lora_dropout}\n"
             f"lora_target_modules: {lora_target_modules}\n"
             f"train_on_inputs: {train_on_inputs}\n"
-            f"xformers enabled: {use_xformers}\n"
+            f"xformers_enabled: {use_xformers}\n"
             f"add_eos_token: {add_eos_token}\n"
             f"group_by_length: {group_by_length}\n"
             f"wandb_project: {wandb_project}\n"
@@ -98,6 +98,7 @@ def train(
     ), "Please specify a --base_model, e.g. --base_model='huggyllama/llama-7b'"
     # TODO,make cleaner, extract as func?
 
+    # ensure gradient accumulation steps is never <1
     gradient_accumulation_steps = batch_size / per_device_train_batch_size
     if gradient_accumulation_steps < 1:
         gradient_accumulation_steps = 1
@@ -113,12 +114,15 @@ def train(
     device_map = "auto"
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     ddp = world_size != 1
-    print(f'ddp: {ddp}')
+    print(f'DDP: {ddp}')
     if ddp:
-        print('is ddp')
         device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)}
-        # TODO: if single batch, use 1 step or will get 0
-        gradient_accumulation_steps = gradient_accumulation_steps // world_size
+        # ensure gradient accumulation steps is never <1
+        gradient_accumulation_steps = batch_size / world_size
+        if gradient_accumulation_steps < 1:
+            gradient_accumulation_steps = 1
+        else:
+            gradient_accumulation_steps = gradient_accumulation_steps // world_size
         print(f"Gradient accumulation steps new: {gradient_accumulation_steps}")
         
     # Check if parameter passed or if set within environ
@@ -207,8 +211,6 @@ def train(
     )
     model = get_peft_model(model, config)
 
-   
-
     if not ddp and torch.cuda.device_count() > 1:
         # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
         model.is_parallelizable = True
@@ -242,6 +244,11 @@ def train(
     print(json.dumps(training_args_dict, indent=4))
 
     training_args = TrainingArguments(**training_args_dict)
+    if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+        # using local rank to print once
+        # TODO: print passed HF trainer arguments here
+        pass
+
 
     # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.Trainer
     args=transformers.TrainingArguments(
