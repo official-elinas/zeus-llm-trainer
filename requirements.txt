@@ -3,10 +3,11 @@ appdirs
 loralib
 bitsandbytes==0.37.2
 black
-black[jupyter]
+# black[jupyter]
 datasets
 fire
-peft==0.3.0
+peft==0.3.0  # training lm_head requires a higher version of peft
 transformers==4.28.1
 sentencepiece
+xformers==0.0.19
 # gradio
