@@ -338,6 +338,7 @@ def train(
         train_dataset=train_data,
         eval_dataset=val_data,
         args=args,
+        callbacks=[SavePeftModelCallback],
         data_collator=transformers.DataCollatorForSeq2Seq(
             tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True
         )
@@ -353,16 +354,15 @@ def train(
     #     )
     # ).__get__(model, type(model))
 
-    if torch.__version__ >= "2" and sys.platform != "win32":
-        model = torch.compile(model)
+    # TODO: this should not be needed - try on box
+    # if torch.__version__ >= "2" and sys.platform != "win32":
+    #     model = torch.compile(model)
 
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
-    
-    model.save_pretrained(output_dir)
+    trainer.save_state()
+    trainer.save_model()
 
-    print(
-        "\n If there's a warning about missing keys above, please disregard :)"
-    )
+    model.save_pretrained(output_dir)
 
 
 def calculate_batches(global_batch_size=0, per_device_train_batch_size=1, gradient_accumulation_steps=1, num_devices=1):
@@ -371,6 +371,7 @@ def calculate_batches(global_batch_size=0, per_device_train_batch_size=1, gradie
     the gradient_accumulation_steps if it's the default of 0 meaning it was not used as a parameter
 
     Either gradient_accumulation_steps or global_batch_size must be defined to return the gradient_accumulation_steps
+    as well as the global_batch_size
     """
     if global_batch_size != 0:
         calculated_gradient_accumulation_steps = global_batch_size / per_device_train_batch_size
@@ -386,6 +387,39 @@ def calculate_batches(global_batch_size=0, per_device_train_batch_size=1, gradie
         return gradient_accumulation_steps, global_batch_size
     else:
         raise Exception('--gradient_accumulation_steps or --global_batch_size is not defined as a parameter!')
+
+
+# borrowed from https://github.com/PygmalionAI/training-code/blob/main/training/hf_trainer.py
+class SavePeftModelCallback(transformers.TrainerCallback):
+    '''
+    At some point, PEFT stopped saving just the adapter and instead started
+    storing full model weights. Extracting the adapter from the weights is
+    doable, but seems to result in subpar results for some unknown reason, so
+    this Trainer callback saves the adapter itself during training to avoid
+    this.
+
+    https://github.com/huggingface/peft/issues/286#issuecomment-1512611968
+    https://github.com/huggingface/peft/blob/main/examples/int8_training/peft_bnb_whisper_large_v2_training.ipynb
+    '''
+
+    def on_save(
+        self,
+        args: transformers.TrainingArguments,
+        state: transformers.TrainerState,
+        control: transformers.TrainerControl,
+        **kwargs,
+    ):
+        checkpoint_folder_name = f"{transformers.trainer_utils.PREFIX_CHECKPOINT_DIR}-{state.global_step}"
+        checkpoint_folder = os.path.join(args.output_dir, checkpoint_folder_name)
+
+        peft_model_path = os.path.join(checkpoint_folder, "adapter_model")
+        kwargs["model"].save_pretrained(peft_model_path)
+
+        # pytorch_model_path = os.path.join(checkpoint_folder, "pytorch_model.bin")
+        # if os.path.exists(pytorch_model_path):
+        #     os.remove(pytorch_model_path)
+
+        return control
 
 
 if __name__ == "__main__":
