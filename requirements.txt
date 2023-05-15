@@ -1,7 +1,7 @@
 accelerate
 appdirs
 loralib
-bitsandbytes==0.37.2
+bitsandbytes==0.37.2  # reports of OOM issues with higher versions
 black
 # black[jupyter]
 datasets
@@ -10,4 +10,6 @@ peft==0.3.0  # training lm_head requires a higher version of peft
 transformers==4.28.1
 sentencepiece
 xformers==0.0.19
+torch==2.0.0
+wandb
 # gradio
