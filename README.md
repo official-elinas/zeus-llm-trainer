@@ -60,7 +60,7 @@ python finetune.py \
     --output_dir './lora-alpaca' \
     --gradient_accumulation_steps 1 \
     --per_device_train_batch_size 4 \
-    --num_epochs 3 \
+    --num_train_epochs 3 \
     --learning_rate 1e-4 \
     --cutoff_len 1024 \
     --val_set_size 2000 \
