@@ -1,14 +1,16 @@
 # 🦙🌲🤏 Alpaca-LoRA
 
 - 2023/05/14 - **Continuing rewrite**
-    - Added more defaults and option to pass additional non-defined HF Trainer arguments. 
-    - Also implemented xformers as an option to replace the default attention method.
+    - Fixed LoRA adapter saving. Currently, it saves full model and adapter. 
+    - Allow for usage of passing arg `--gradient_accumulation_steps=<steps>` OR `--global_batch_size=<batch_size>` 
+       One must be picked over the other depending on calculation you prefer.
+    - Implemented xformers as an option to replace the default attention method with `--use_xformers`
     - Argument name changes, will be documented.
 - 2023/05/08 - **Reworking trainer**
 
 **TODO**
-- [ ] Use batch per device and gradient accumulation steps to calculate global steps
-- [ ] Save LoRA adapter correctly every checkpoint instead of the full model
+- [x] Use batch per device and gradient accumulation steps to calculate global steps
+- [x] Save LoRA adapter correctly every checkpoint instead of the full model
 - [ ] Working Deepspeed support (currently untested)
 - [ ] Implement loading arguments from JSON
 
@@ -32,7 +34,7 @@ Without hyperparameter tuning, the LoRA model produces outputs comparable to the
    pip install -r requirements.txt
    ```
 
-1. If bitsandbytes doesn't work, [install it from source.](https://github.com/TimDettmers/bitsandbytes/blob/main/compile_from_source.md) Windows users can follow [these instructions](https://github.com/tloen/alpaca-lora/issues/17).
+2. For `bitsandbytes` Windows users can follow [these instructions](https://github.com/tloen/alpaca-lora/issues/17).
 
 ### Training (`finetune.py`)
 
@@ -56,14 +58,14 @@ python finetune.py \
     --base_model 'elinas/llama-7b-hf-transformers-4.29' \
     --data_path 'dataset.json' \
     --output_dir './lora-alpaca' \
-    --batch_size 128 \
-    --micro_batch_size 4 \
+    --gradient_accumulation_steps 1 \
+    --per_device_train_batch_size 4 \
     --num_epochs 3 \
     --learning_rate 1e-4 \
-    --cutoff_len 512 \
+    --cutoff_len 1024 \
     --val_set_size 2000 \
-    --lora_r 8 \
-    --lora_alpha 16 \
+    --lora_r 64 \
+    --lora_alpha 128 \
     --lora_dropout 0.05 \
     --lora_target_modules '[q_proj,v_proj]' \
     --train_on_inputs \
@@ -83,8 +85,8 @@ OMP_NUM_THREADS=12 WORLD_SIZE=2 torchrun --nproc_per_node=2 --master_port=1234 f
     --lora_target_modules='[q_proj,v_proj,k_proj,o_proj]' \
     --lora_r=128 \
     --lora_alpha=256 \
-    --gradient_accumulation_steps=8 \
-    --per_device_train_batch_size=1 \
+    --gradient_accumulation_steps=4 \
+    --per_device_train_batch_size=16 \
     --train_on_inputs=True
 ```
 
