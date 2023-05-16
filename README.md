@@ -16,6 +16,7 @@
 - [x] Save LoRA adapter correctly every checkpoint instead of the full model
 - [ ] Working Deepspeed support (currently untested)
 - [ ] Implement loading arguments from JSON
+- [ ] Implement full finetuning as an option (not LoRA)
 
 This repository contains code for reproducing the [Stanford Alpaca](https://github.com/tatsu-lab/stanford_alpaca) results using [low-rank adaptation (LoRA)](https://arxiv.org/pdf/2106.09685.pdf).
 We provide an Instruct model of similar quality to `text-davinci-003` that can run [on a Raspberry Pi](https://twitter.com/miolini/status/1634982361757790209) (for research),
