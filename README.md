@@ -1,5 +1,8 @@
 # 🦙🌲🤏 Alpaca-LoRA
 
+- 2023/05/16 - **xformers info**
+    - I have tested twice with `xformers` producing strange loss that drops back down after a certain amount of steps, 
+      though it might be nothing serious for a full training session. If you use it, please test with and without.
 - 2023/05/14 - **Continuing rewrite**
     - Fixed LoRA adapter saving. Currently, it saves full model and adapter. 
     - Allow for usage of passing arg `--gradient_accumulation_steps=<steps>` OR `--global_batch_size=<batch_size>` 
