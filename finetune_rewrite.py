@@ -27,7 +27,6 @@ from transformers import LlamaForCausalLM, LlamaTokenizer
 
 from utils.prompter import Prompter
 
-# TODO: calculate based on per_dev_batch and gradient_accumulation_steps, not "batch_size and micro_batch_size"
 def train(
     # model/data params - required
     base_model: str = "",
@@ -98,11 +97,12 @@ def train(
             f"base_model: {base_model}\n"
             f"data_path: {data_path}\n"
             f"output_dir: {output_dir}\n"
+            f"learning_rate: {learning_rate}\n"
+            f"num_train_epochs: {num_train_epochs}\n"
             f"per_device_train_batch_size: {per_device_train_batch_size}\n"
             f"gradient accumulation steps: {gradient_accumulation_steps}\n"
             f"global batch_size: {global_batch_size}\n"
-            f"num_train_epochs: {num_train_epochs}\n"
-            f"learning_rate: {learning_rate}\n"
+            f"warmup_steps: {warmup_steps}\n"
             f"cutoff_len: {cutoff_len}\n"
             f"val_set_size: {val_set_size}\n"
             f"using DDP: {ddp}\n"
