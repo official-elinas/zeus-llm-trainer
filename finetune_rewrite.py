@@ -40,7 +40,8 @@ def train(
     warmup_steps: int = 100,
     save_total_limit: int = 5,
     logging_steps: int = 5,
-    # faster, but produces an odd training loss curve - see HF Trainer docs
+    seed: int = 42,
+    # faster, but produces an odd training loss curve - recommended to use
     group_by_length: bool = False,
     # use global batch size OR gradient accumulation steps, not both
     # one must NOT be 0
@@ -286,6 +287,8 @@ def train(
         # ddp_timeout=1800,
         report_to="wandb" if use_wandb else None,
         run_name=wandb_run_name if use_wandb else None,
+        seed=seed,
+        # max_grad_norm=1.0 if not use_xformers else 0.5
         # sharded_ddp="simple"
         # **vars(training_args)
     )
