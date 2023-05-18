@@ -346,17 +346,11 @@ def train(
 
     model.config.use_cache = False
 
-    # TODO: replace with function that saves LoRA adapters
-    # old_state_dict = model.state_dict
-    # model.state_dict = (
-    #     lambda self, *_, **__: get_peft_model_state_dict(
-    #         self, old_state_dict()
-    #     )
-    # ).__get__(model, type(model))
-
-    # TODO: this should not be needed - try on box
-    # if torch.__version__ >= "2" and sys.platform != "win32":
-    #     model = torch.compile(model)
+    # Read more on torch.compile here and the performance improvements:
+    # It currently is not supported on Windows
+    # https://pytorch.org/get-started/pytorch-2.0/#pytorch-2x-faster-more-pythonic-and-as-dynamic-as-ever
+    if torch.__version__ >= "2" and sys.platform != "win32":
+        model = torch.compile(model)
 
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
     trainer.save_state()
