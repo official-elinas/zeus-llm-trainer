@@ -385,7 +385,7 @@ def calculate_batches(global_batch_size=0, per_device_train_batch_size=1, gradie
 
 # borrowed from https://github.com/PygmalionAI/training-code/blob/main/training/hf_trainer.py
 class SavePeftModelCallback(transformers.TrainerCallback):
-    '''
+    """
     At some point, PEFT stopped saving just the adapter and instead started
     storing full model weights. Extracting the adapter from the weights is
     doable, but seems to result in subpar results for some unknown reason, so
@@ -394,7 +394,7 @@ class SavePeftModelCallback(transformers.TrainerCallback):
 
     https://github.com/huggingface/peft/issues/286#issuecomment-1512611968
     https://github.com/huggingface/peft/blob/main/examples/int8_training/peft_bnb_whisper_large_v2_training.ipynb
-    '''
+    """
 
     def on_save(
         self,
