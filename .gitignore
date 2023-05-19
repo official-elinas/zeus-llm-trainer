@@ -1,3 +1,4 @@
+.idea
 out/
 7B/
 13B/
@@ -13,3 +14,4 @@ test_data.json
 todo.txt
 .venv
 .vscode
+/venv/

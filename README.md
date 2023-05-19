@@ -1,7 +1,36 @@
-# 🦙🌲🤏 Alpaca-LoRA
+# Alpaca-LoRA-*optimized* (Final name TBD)
 
+- 2023/05/18 - **metrics: group_by_length and xformers**
+    - I will be posting all benchmarks/tests I perform in the project's [wiki](https://github.com/official-elinas/alpaca-lora-optimized/wiki)
+- 2023/05/18 - **testing features**
+    - Currently, I have been testing features, specifically `--group_by_length` and determined that
+      you should essentially always use it even if your dataset is not varied in length. An experiment was done
+      with a highly varied dataset and with `--group_by_length` - it took 2:30h and without it took 4hrs exactly
+      while producing lower loss and VRAM.
+    - `xformers` - still doing testing on this with a 30B model. The strange loss jump could be due to 
+      "exploding gradients" and I am looking into a possible solution such as tweaking the `max_grad_norm`
+      parameter in the HF trainer from the default of `1.0` to a lower number, or letting the user decide (likely the latter).
+      In addition, I am doing testing with and without `xformers` to get a baseline of what performance improvement can 
+      be gained as well as potential memory savings and will provide an update once that testing is finished.
+    - `torch.compile()` was re-implemented as the speedup can be considerable for training, although I did not see
+      benchmarks for 8-bit training (or if it's supported at all)? For now, it is only compatible on Linux and if you are on Windows it will be ignored.
+- 2023/05/16 - **xformers info**
+    - I have tested twice with `xformers` producing strange loss that drops back down after a certain amount of steps, 
+      though it might be nothing serious for a full training session. If you use it, please test with and without.
+- 2023/05/14 - **Continuing rewrite**
+    - Fixed LoRA adapter saving. Currently, it saves full model and adapter. 
+    - Allow for usage of passing arg `--gradient_accumulation_steps=<steps>` OR `--global_batch_size=<batch_size>` 
+       One must be picked over the other depending on calculation you prefer.
+    - Implemented xformers as an option to replace the default attention method with `--use_xformers`
+    - Argument name changes, will be documented.
 - 2023/05/08 - **Reworking trainer**
 
+**TODO**
+- [x] Use batch per device and gradient accumulation steps to calculate global steps
+- [x] Save LoRA adapter correctly every checkpoint instead of the full model
+- [ ] Working Deepspeed support (currently untested)
+- [ ] Implement loading arguments from JSON
+- [ ] Implement full finetuning as an option (not LoRA)
 
 This repository contains code for reproducing the [Stanford Alpaca](https://github.com/tatsu-lab/stanford_alpaca) results using [low-rank adaptation (LoRA)](https://arxiv.org/pdf/2106.09685.pdf).
 We provide an Instruct model of similar quality to `text-davinci-003` that can run [on a Raspberry Pi](https://twitter.com/miolini/status/1634982361757790209) (for research),
@@ -23,9 +52,11 @@ Without hyperparameter tuning, the LoRA model produces outputs comparable to the
    pip install -r requirements.txt
    ```
 
-1. If bitsandbytes doesn't work, [install it from source.](https://github.com/TimDettmers/bitsandbytes/blob/main/compile_from_source.md) Windows users can follow [these instructions](https://github.com/tloen/alpaca-lora/issues/17).
+2. For `bitsandbytes` Windows users can follow [these instructions](https://github.com/tloen/alpaca-lora/issues/17).
 
-### Training (`finetune.py`)
+*Note that `bitsandbytes` is not officially supported on Windows, nor is serious training recommended on it.*
+
+### LoRA Training (`lora_finetune.py`)
 
 This file contains a straightforward application of PEFT to the LLaMA model,
 as well as some code related to prompt construction and tokenization.
@@ -34,8 +65,8 @@ PRs adapting this code to support larger models are always welcome.
 Example usage:
 
 ```bash
-python finetune.py \
-    --base_model 'decapoda-research/llama-7b-hf' \
+python lora_finetune.py \
+    --base_model 'elinas/llama-7b-hf-transformers-4.29' \
     --data_path 'yahma/alpaca-cleaned' \
     --output_dir './lora-alpaca'
 ```
@@ -43,23 +74,50 @@ python finetune.py \
 We can also tweak our hyperparameters:
 
 ```bash
-python finetune.py \
-    --base_model 'decapoda-research/llama-7b-hf' \
-    --data_path 'yahma/alpaca-cleaned' \
+python lora_finetune.py \
+    --base_model 'elinas/llama-7b-hf-transformers-4.29' \
+    --data_path 'dataset.json' \
     --output_dir './lora-alpaca' \
-    --batch_size 128 \
-    --micro_batch_size 4 \
-    --num_epochs 3 \
+    --gradient_accumulation_steps 1 \
+    --per_device_train_batch_size 4 \
+    --num_train_epochs 3 \
     --learning_rate 1e-4 \
-    --cutoff_len 512 \
+    --cutoff_len 1024 \
     --val_set_size 2000 \
-    --lora_r 8 \
-    --lora_alpha 16 \
+    --lora_r 64 \
+    --lora_alpha 128 \
     --lora_dropout 0.05 \
     --lora_target_modules '[q_proj,v_proj]' \
     --train_on_inputs \
     --group_by_length
 ```
+
+Example DDP Usage (2 GPUs, adjust top line based on GPU count):
+```bash
+OMP_NUM_THREADS=12 WORLD_SIZE=2 torchrun --nproc_per_node=2 --master_port=1234 lora_finetune.py \
+    --base_model='elinas/llama-7b-hf-transformers-4.29' \
+    --data_path='dataset.json' \
+    --num_train_epochs=3 \
+    --cutoff_len=2048 \
+    --group_by_length \
+    --val_set_size=2000 \
+    --output_dir='./7b-lora' \
+    --lora_target_modules='[q_proj,v_proj,k_proj,o_proj]' \
+    --lora_r=128 \
+    --lora_alpha=256 \
+    --gradient_accumulation_steps=4 \
+    --per_device_train_batch_size=16 \
+    --train_on_inputs=True \
+    --seed=42
+```
+### Merge LoRA Adapter into HF/PyTorch Model Format
+Use `scripts/merge_lora_hf_checkpoint.py` and the arguments provided in the file to convert your `adapter_model.bin` to a full model.
+
+You may also use the adapter directly without converting using applications like [text-generation-webui](https://github.com/oobabooga/text-generation-webui)
+
+
+Everything below this is "TODO" and not officially supported
+------
 
 ### Inference (`generate.py`)
 
@@ -73,30 +131,6 @@ python generate.py \
     --base_model 'decapoda-research/llama-7b-hf' \
     --lora_weights 'tloen/alpaca-lora-7b'
 ```
-
-### Official weights
-
-The most recent "official" Alpaca-LoRA adapter available at [`tloen/alpaca-lora-7b`](https://huggingface.co/tloen/alpaca-lora-7b) was trained on March 26 with the following command:
-
-```bash
-python finetune.py \
-    --base_model='decapoda-research/llama-7b-hf' \
-    --num_epochs=10 \
-    --cutoff_len=512 \
-    --group_by_length \
-    --output_dir='./lora-alpaca' \
-    --lora_target_modules='[q_proj,k_proj,v_proj,o_proj]' \
-    --lora_r=16 \
-    --micro_batch_size=8
-```
-
-### Checkpoint export (`export_*_checkpoint.py`)
-
-These files contain scripts that merge the LoRA weights back into the base model
-for export to Hugging Face format and to PyTorch `state_dicts`.
-They should help users
-who want to run inference in projects like [llama.cpp](https://github.com/ggerganov/llama.cpp)
-or [alpaca.cpp](https://github.com/antimatter15/alpaca.cpp).
 
 ### Docker Setup & Inference
 
