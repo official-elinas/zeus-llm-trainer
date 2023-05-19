@@ -54,7 +54,9 @@ Without hyperparameter tuning, the LoRA model produces outputs comparable to the
 
 2. For `bitsandbytes` Windows users can follow [these instructions](https://github.com/tloen/alpaca-lora/issues/17).
 
-### Training (`finetune.py`)
+*Note that `bitsandbytes` is not officially supported on Windows, nor is serious training recommended on it.*
+
+### LoRA Training (`lora_finetune.py`)
 
 This file contains a straightforward application of PEFT to the LLaMA model,
 as well as some code related to prompt construction and tokenization.
@@ -63,7 +65,7 @@ PRs adapting this code to support larger models are always welcome.
 Example usage:
 
 ```bash
-python finetune.py \
+python lora_finetune.py \
     --base_model 'elinas/llama-7b-hf-transformers-4.29' \
     --data_path 'yahma/alpaca-cleaned' \
     --output_dir './lora-alpaca'
@@ -72,7 +74,7 @@ python finetune.py \
 We can also tweak our hyperparameters:
 
 ```bash
-python finetune.py \
+python lora_finetune.py \
     --base_model 'elinas/llama-7b-hf-transformers-4.29' \
     --data_path 'dataset.json' \
     --output_dir './lora-alpaca' \
@@ -92,7 +94,7 @@ python finetune.py \
 
 Example DDP Usage (2 GPUs, adjust top line based on GPU count):
 ```bash
-OMP_NUM_THREADS=12 WORLD_SIZE=2 torchrun --nproc_per_node=2 --master_port=1234 finetune.py \
+OMP_NUM_THREADS=12 WORLD_SIZE=2 torchrun --nproc_per_node=2 --master_port=1234 lora_finetune.py \
     --base_model='elinas/llama-7b-hf-transformers-4.29' \
     --data_path='dataset.json' \
     --num_train_epochs=3 \
@@ -105,8 +107,17 @@ OMP_NUM_THREADS=12 WORLD_SIZE=2 torchrun --nproc_per_node=2 --master_port=1234 f
     --lora_alpha=256 \
     --gradient_accumulation_steps=4 \
     --per_device_train_batch_size=16 \
-    --train_on_inputs=True
+    --train_on_inputs=True \
+    --seed=42
 ```
+### Merge LoRA Adapter into HF/PyTorch Model Format
+Use `scripts/merge_lora_hf_checkpoint.py` and the arguments provided in the file to convert your `adapter_model.bin` to a full model.
+
+You may also use the adapter directly without converting using applications like [text-generation-webui](https://github.com/oobabooga/text-generation-webui)
+
+
+Everything below this is "TODO" and not officially supported
+------
 
 ### Inference (`generate.py`)
 
@@ -120,30 +131,6 @@ python generate.py \
     --base_model 'decapoda-research/llama-7b-hf' \
     --lora_weights 'tloen/alpaca-lora-7b'
 ```
-
-### Official weights
-
-The most recent "official" Alpaca-LoRA adapter available at [`tloen/alpaca-lora-7b`](https://huggingface.co/tloen/alpaca-lora-7b) was trained on March 26 with the following command:
-
-```bash
-python finetune.py \
-    --base_model='decapoda-research/llama-7b-hf' \
-    --num_epochs=10 \
-    --cutoff_len=512 \
-    --group_by_length \
-    --output_dir='./lora-alpaca' \
-    --lora_target_modules='[q_proj,k_proj,v_proj,o_proj]' \
-    --lora_r=16 \
-    --micro_batch_size=8
-```
-
-### Checkpoint export (`export_*_checkpoint.py`)
-
-These files contain scripts that merge the LoRA weights back into the base model
-for export to Hugging Face format and to PyTorch `state_dicts`.
-They should help users
-who want to run inference in projects like [llama.cpp](https://github.com/ggerganov/llama.cpp)
-or [alpaca.cpp](https://github.com/antimatter15/alpaca.cpp).
 
 ### Docker Setup & Inference
 
