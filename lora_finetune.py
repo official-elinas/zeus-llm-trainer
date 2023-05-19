@@ -34,6 +34,8 @@ def train(
     data_path: str = "dataset.json",
     # HF Trainer params
     output_dir: str = "./lora-alpaca",
+    fp16: bool = True,
+    bf16: bool = False,
     num_train_epochs: int = 3,
     learning_rate: float = 3e-4,
     per_device_train_batch_size: int = 4,
@@ -77,6 +79,7 @@ def train(
     if use_xformers:
         from utils.monkeypatches import apply_xformers_monkeypatches
         apply_xformers_monkeypatches()
+        # TODO: look into exploding gradients
 
     prompter = Prompter(prompt_template_name)
 
