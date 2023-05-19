@@ -1,5 +1,8 @@
-# 🦙🌲🤏 Alpaca-LoRA
-- 2023/05/18 **testing features**
+# Alpaca-LoRA-*optimized* (Final name TBD)
+
+- 2023/05/18 - **metrics: group_by_length and xformers**
+    - I will be posting all benchmarks/tests I perform in the project's [wiki](https://github.com/official-elinas/alpaca-lora-optimized/wiki)
+- 2023/05/18 - **testing features**
     - Currently, I have been testing features, specifically `--group_by_length` and determined that
       you should essentially always use it even if your dataset is not varied in length. An experiment was done
       with a highly varied dataset and with `--group_by_length` - it took 2:30h and without it took 4hrs exactly
@@ -8,7 +11,7 @@
       "exploding gradients" and I am looking into a possible solution such as tweaking the `max_grad_norm`
       parameter in the HF trainer from the default of `1.0` to a lower number, or letting the user decide (likely the latter).
       In addition, I am doing testing with and without `xformers` to get a baseline of what performance improvement can 
-      be gained as well as potential memory saving and will provide an update once that testing is finish.
+      be gained as well as potential memory savings and will provide an update once that testing is finished.
     - `torch.compile()` was re-implemented as the speedup can be considerable for training, although I did not see
       benchmarks for 8-bit training (or if it's supported at all)? For now, it is only compatible on Linux and if you are on Windows it will be ignored.
 - 2023/05/16 - **xformers info**
