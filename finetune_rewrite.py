@@ -370,20 +370,14 @@ def calculate_batches(global_batch_size=0, per_device_train_batch_size=1, gradie
     Either gradient_accumulation_steps or global_batch_size must be defined to return the gradient_accumulation_steps
     as well as the global_batch_size
     """
-    if global_batch_size != 0:
-        calculated_gradient_accumulation_steps = global_batch_size / per_device_train_batch_size
-        if calculated_gradient_accumulation_steps < 1:
-            calculated_gradient_accumulation_steps = 1
-            return calculated_gradient_accumulation_steps, global_batch_size
-        else:
-            calculated_gradient_accumulation_steps = global_batch_size // per_device_train_batch_size
-            return calculated_gradient_accumulation_steps, global_batch_size
-    elif gradient_accumulation_steps != 0:
-        # Local batch size per device * Number of devices * Gradient accumulation steps
+    if gradient_accumulation_steps != 0:
         global_batch_size = per_device_train_batch_size * num_devices * gradient_accumulation_steps
         return gradient_accumulation_steps, global_batch_size
+    elif global_batch_size != 0:
+        gradient_accumulation_steps = max(global_batch_size // per_device_train_batch_size, 1)
+        return gradient_accumulation_steps, global_batch_size
     else:
-        raise Exception('--gradient_accumulation_steps or --global_batch_size is not defined as a parameter!')
+        raise Exception('Either --gradient_accumulation_steps or --global_batch_size must be provided.')
 
 
 # borrowed from https://github.com/PygmalionAI/training-code/blob/main/training/hf_trainer.py
