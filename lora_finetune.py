@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 import json
+import warnings
 from typing import List
 
 import fire
@@ -70,6 +71,8 @@ def train(
     resume_from_checkpoint: str = None,  # either training checkpoint or final adapter
     prompt_template_name: str = "alpaca",  # The prompt template to use, will default to alpaca.
 ):
+    warnings.filterwarnings('ignore', category=UserWarning, module='bitsandbytes.autograd._functions')
+
     # TODO: option to load config from json
     if use_xformers:
         from utils.monkeypatches import apply_xformers_monkeypatches
