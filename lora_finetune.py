@@ -44,6 +44,7 @@ def train(
     save_total_limit: int = 5,
     logging_steps: int = 5,
     seed: int = 42,
+    max_grad_norm: float = 1.0,
     # faster, but produces an odd training loss curve - recommended to use
     group_by_length: bool = False,
     # use global batch size OR gradient accumulation steps, not both
@@ -112,6 +113,7 @@ def train(
             f"warmup_steps: {warmup_steps}\n"
             f"cutoff_len: {cutoff_len}\n"
             f"val_set_size: {val_set_size}\n"
+            f"max_grad_norm: {max_grad_norm}\n"
             f"using DDP: {ddp}\n"
             f"lora_r: {lora_r}\n"
             f"lora_alpha: {lora_alpha}\n"
@@ -294,7 +296,7 @@ def train(
         report_to="wandb" if use_wandb else None,
         run_name=wandb_run_name if use_wandb else None,
         seed=seed,
-        # max_grad_norm=1.0 if not use_xformers else 0.5
+        max_grad_norm=max_grad_norm
         # sharded_ddp="simple"
         # **vars(training_args)
     )
