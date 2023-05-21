@@ -40,7 +40,7 @@ def train(
     learning_rate: float = 3e-4,
     per_device_train_batch_size: int = 4,
     save_and_eval_steps: int = 100,
-    warmup_steps: int = 100,
+    warmup_ratio: float = 0.06,
     save_total_limit: int = 5,
     logging_steps: int = 5,
     seed: int = 42,
@@ -277,7 +277,7 @@ def train(
     args = transformers.TrainingArguments(
         per_device_train_batch_size=per_device_train_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
-        warmup_steps=warmup_steps,  # 0.06 coef rec. by MS
+        warmup_ratio=warmup_ratio,  # default 0.06 as recommended by MS LoRA
         num_train_epochs=num_train_epochs,
         learning_rate=learning_rate,
         fp16=True,
