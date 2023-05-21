@@ -80,7 +80,6 @@ def train(
     if use_xformers:
         from utils.monkeypatches import apply_xformers_monkeypatches
         apply_xformers_monkeypatches()
-        # TODO: look into exploding gradients
 
     prompter = Prompter(prompt_template_name)
 
