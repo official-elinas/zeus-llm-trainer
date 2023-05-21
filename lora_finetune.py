@@ -296,7 +296,7 @@ def train(
         report_to="wandb" if use_wandb else None,
         run_name=wandb_run_name if use_wandb else None,
         seed=seed,
-        max_grad_norm=max_grad_norm
+        max_grad_norm=max_grad_norm if not use_xformers else max_grad_norm if max_grad_norm != 1.0 else 0.5
         # sharded_ddp="simple"
         # **vars(training_args)
     )
