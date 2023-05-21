@@ -110,7 +110,7 @@ def train(
             f"per_device_train_batch_size: {per_device_train_batch_size}\n"
             f"gradient accumulation steps: {gradient_accumulation_steps}\n"
             f"global batch_size: {global_batch_size}\n"
-            f"warmup_steps: {warmup_steps}\n"
+            f"warmup_ratio: {warmup_ratio}\n"
             f"cutoff_len: {cutoff_len}\n"
             f"val_set_size: {val_set_size}\n"
             f"max_grad_norm: {max_grad_norm}\n"
