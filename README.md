@@ -1,5 +1,14 @@
 # Alpaca-LoRA-*optimized* (Final name TBD)
 
+- 2023/05/21 - **working on multiple things at once**
+    - I've updated the TODO list below in order of priority. 
+    - Some changes in dev have been made like adding `--max_grad_norm`
+      which can help normalize gradients when using `xformers` with no penalty speed and an improved loss.
+      This defaults at `1.0` (HF default) and will change to `0.5` if using `xformers` unless a specific value
+      is passed via `max_grad_norm` ie. `--max_grad_norm=0.7`
+    - `--warmup_steps` as a parameter is removed and replaced with `--warmup_ratio` as it's better to calculate your warmup as a ratio. 
+      By default, it is set to `0.06` which is taken from the Microsoft LoRA example. If you do not want warmup, set 
+      `--warmup_ratio=0` - though this is not recommended. 
 - 2023/05/18 - **metrics: group_by_length and xformers**
     - I will be posting all benchmarks/tests I perform in the project's [wiki](https://github.com/official-elinas/alpaca-lora-optimized/wiki)
 - 2023/05/18 - **testing features**
@@ -28,9 +37,11 @@
 **TODO**
 - [x] Use batch per device and gradient accumulation steps to calculate global steps
 - [x] Save LoRA adapter correctly every checkpoint instead of the full model
-- [ ] Working Deepspeed support (currently untested)
-- [ ] Implement loading arguments from JSON
+- [ ] Tokenize each unique dataset once (separate script) to save pre-train time or tokenize every time by default
 - [ ] Implement full finetuning as an option (not LoRA)
+- [ ] Working Deepspeed support (currently untested, will test when I get back to 33b training)
+- [ ] FP8 training using accelerate (Hopper GPUs / 4000-series)
+- [ ] Implement loading arguments from JSON
 
 This repository contains code for reproducing the [Stanford Alpaca](https://github.com/tatsu-lab/stanford_alpaca) results using [low-rank adaptation (LoRA)](https://arxiv.org/pdf/2106.09685.pdf).
 We provide an Instruct model of similar quality to `text-davinci-003` that can run [on a Raspberry Pi](https://twitter.com/miolini/status/1634982361757790209) (for research),
