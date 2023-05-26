@@ -1,5 +1,10 @@
-# Alpaca-LoRA-*optimized* (Final name TBD)
-
+# Zeus LLM Trainer
+- 2023/05/25 - **larger models and possible issues**
+    - I've been testing larger models, specifically 30/33B (and I assume this would apply to 65B as well) but the gradient
+      "explosions" are not directly due to `xformers` - the attention method might make it worse, but I have experienced
+      the issue without it, using grouping and without, and currently trying to find out why. It might be my dataset, so
+      that is what I will be trying to change next. 
+    - The next release will include pre-tokenization and full finetuning, hence the project will be renamed to "Zeus"
 - 2023/05/21 - **working on multiple things at once**
     - I've updated the TODO list below in order of priority. 
     - Some changes in dev have been made like adding `--max_grad_norm`
