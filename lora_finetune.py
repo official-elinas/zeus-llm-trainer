@@ -55,6 +55,7 @@ def train(
     cutoff_len: int = 512,
     val_set_size: int = 2000,
     use_xformers: bool = False,
+    use_sdp_attn: bool = False,
     # lora-specific hyperparams
     lora_r: int = 8,
     lora_alpha: int = 16,
@@ -77,9 +78,15 @@ def train(
     warnings.filterwarnings('ignore', category=UserWarning, module='bitsandbytes.autograd._functions')
 
     # TODO: option to load config from json
-    if use_xformers:
+
+    if use_xformers and not use_sdp_attn:
         from utils.monkeypatches import apply_xformers_monkeypatches
         apply_xformers_monkeypatches()
+    elif not use_xformers and use_sdp_attn:
+        from utils.monkeypatches import apply_sdp_attention_monkeypatch
+        apply_sdp_attention_monkeypatch()
+    elif use_xformers and use_sdp_attn:
+        raise Exception("Both --use_xformers and --use_sdp_attn cannot be used at the same time.")
 
     prompter = Prompter(prompt_template_name)
 
