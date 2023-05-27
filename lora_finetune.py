@@ -8,7 +8,7 @@ from typing import List
 import fire
 import torch
 import transformers
-from transformers import TrainingArguments
+from transformers import TrainingArguments, BitsAndBytesConfig
 from datasets import load_dataset
 
 """
@@ -21,7 +21,7 @@ from peft import (
     LoraConfig,
     get_peft_model,
     get_peft_model_state_dict,
-    prepare_model_for_int8_training,
+    prepare_model_for_kbit_training,
     set_peft_model_state_dict,
 )
 from transformers import LlamaForCausalLM, LlamaTokenizer
@@ -34,8 +34,7 @@ def train(
     data_path: str = "dataset.json",
     # HF Trainer params
     output_dir: str = "./lora-alpaca",
-    fp16: bool = True,
-    bf16: bool = False,
+    optim: str = "adamw_torch",
     num_train_epochs: int = 3,
     learning_rate: float = 3e-4,
     per_device_train_batch_size: int = 4,
@@ -50,13 +49,18 @@ def train(
     # use global batch size OR gradient accumulation steps, not both
     # one must NOT be 0
     gradient_accumulation_steps: int = 0,
-    # alpaca-lora training hyperparams
+    # alpaca-lora training hyper/params
     global_batch_size: int = 0,
     cutoff_len: int = 512,
     val_set_size: int = 2000,
+    is_finetune: bool = False,
+    train_fp16: bool = False,
+    train_4bit: bool = False,
+    use_gradient_checkpointing: bool = False,
     use_xformers: bool = False,
     use_sdp_attn: bool = False,
     # lora-specific hyperparams
+    is_lora: bool = True,
     lora_r: int = 8,
     lora_alpha: int = 16,
     lora_dropout: float = 0.05,
@@ -78,6 +82,9 @@ def train(
     warnings.filterwarnings('ignore', category=UserWarning, module='bitsandbytes.autograd._functions')
 
     # TODO: option to load config from json
+    # argument check
+    if train_fp16 and train_4bit:
+        raise Exception("Both --train_fp16 and --train_4bit cannot be used at the same time.")
 
     if use_xformers and not use_sdp_attn:
         from utils.monkeypatches import apply_xformers_monkeypatches
@@ -106,11 +113,15 @@ def train(
 
     # Done - add: Global batch size = Local batch size per device * Number of devices * Gradient accumulation steps
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+        training_type = "fp16" if train_fp16 else "4bit" if train_4bit else "8bit"
+        # TODO: split out lora prints for finetune
         print(
             f"Training Alpaca-LoRA model with params:\n"
             f"base_model: {base_model}\n"
             f"data_path: {data_path}\n"
             f"output_dir: {output_dir}\n"
+            f"optimizer: {optim}\n"
+            f"training_type: {training_type}\n"
             f"learning_rate: {learning_rate}\n"
             f"num_train_epochs: {num_train_epochs}\n"
             f"per_device_train_batch_size: {per_device_train_batch_size}\n"
@@ -152,12 +163,31 @@ def train(
     if len(wandb_log_model) > 0:
         os.environ["WANDB_LOG_MODEL"] = wandb_log_model
 
-    model = LlamaForCausalLM.from_pretrained(
-        base_model,
-        load_in_8bit=True,
-        torch_dtype=torch.float16,
-        device_map=device_map,
-    )
+    # check if the user wants to train in fp16 to adjust the way the model is loaded
+    load_in_8bit = True
+    if train_fp16:
+        load_in_8bit = False
+
+    if not train_4bit:
+        model = LlamaForCausalLM.from_pretrained(
+            base_model,
+            load_in_8bit=load_in_8bit,
+            torch_dtype=torch.bfloat16,
+            device_map=device_map,
+        )
+    else:
+        # assume that default is 8bit, fp16 is optional (above) and the last option is 4bit
+        # TODO: look into "double quant" config
+        nf4_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_compute_dtype=torch.bfloat16
+        )
+        model = LlamaForCausalLM.from_pretrained(
+            base_model,
+            quantization_config=nf4_config
+        )
 
     tokenizer = LlamaTokenizer.from_pretrained(base_model)
 
@@ -215,7 +245,11 @@ def train(
             ]  # could be sped up, probably
         return tokenized_full_prompt
 
-    model = prepare_model_for_int8_training(model)
+    if use_gradient_checkpointing:
+        model.gradient_checkpointing_enable()
+
+    if not train_fp16:
+        model = prepare_model_for_kbit_training(model)
 
     config = LoraConfig(
         r=lora_r,
@@ -289,7 +323,7 @@ def train(
         learning_rate=learning_rate,
         fp16=True,
         logging_steps=logging_steps,
-        optim="adamw_torch",
+        optim=optim,
         evaluation_strategy="steps" if val_set_size > 0 else "no",
         save_strategy="steps",
         eval_steps=save_and_eval_steps if val_set_size > 0 else None,
@@ -303,7 +337,7 @@ def train(
         report_to="wandb" if use_wandb else None,
         run_name=wandb_run_name if use_wandb else None,
         seed=seed,
-        max_grad_norm=max_grad_norm if not use_xformers else max_grad_norm if max_grad_norm != 1.0 else 0.5
+        max_grad_norm=max_grad_norm  # if not use_xformers else max_grad_norm if max_grad_norm != 1.0 else 0.5
         # sharded_ddp="simple"
         # **vars(training_args)
     )
@@ -362,6 +396,7 @@ def train(
         )
     )
 
+    # silences warnings, only enable for inference
     model.config.use_cache = False
 
     # Read more on torch.compile here and the performance improvements:
