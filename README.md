@@ -1,4 +1,16 @@
 # Zeus LLM Trainer
+- 2023/05/27 - **4bit QLoRA, fp16 training and more**
+   - 4bit QLora training has been implemented and is usable by calling the `--train_4bit` flag. No other configuration 
+     is needed on top of the current LoRA config. 
+   - LoRAs can be trained in fp16 now for improved training speed at the cost of vram, use `--train_fp16`
+   - Full finetuning is implemented using `--is_finetune` - The code is a bit messy and might not work 100% right, consider this completely untested.
+     <br>Note that you **need** to pass `--train_fp16` or it will default to 8bit.
+     If you use this argument, all LoRA arguments and operations will be bypassed in the trainer.
+   - optional optimizer selection:  `--optim="optm_name"` has been added if you don't want to use the default `adamw_torch`
+     `paged_adamw_8bit` was used in the QLoRA example. [Read about the different optimizers here](https://huggingface.co/docs/transformers/v4.29.1/en/perf_train_gpu_one#optimizer) <br>     If you are unsure, just keep it default or feel free to experiment, as some can add memory savings, though generally
+     at the expense of speed.
+   - optional gradient checkpointing: `--use_gradient_checkpointing` which can potentially save significant memory, once 
+     again at the cost of speed. **This should really only be used if you can't train the model at a batch size of 1.** [Read more on Gradient Checkpointing here](https://huggingface.co/docs/transformers/v4.18.0/en/performance#gradient-checkpointing)
 - 2023/05/25 - **larger models and possible issues**
     - I've been testing larger models, specifically 30/33B (and I assume this would apply to 65B as well) but the gradient
       "explosions" are not directly due to `xformers` - the attention method might make it worse, but I have experienced
@@ -42,8 +54,9 @@
 **TODO**
 - [x] Use batch per device and gradient accumulation steps to calculate global steps
 - [x] Save LoRA adapter correctly every checkpoint instead of the full model
+- [x] Implement 4bit QLoRA
 - [ ] Tokenize each unique dataset once (separate script) to save pre-train time or tokenize every time by default
-- [ ] Implement full finetuning as an option (not LoRA)
+- [x] Implement full finetuning as an option (not LoRA) - **currently untested**
 - [ ] Working Deepspeed support (currently untested, will test when I get back to 33b training)
 - [ ] FP8 training using accelerate (Hopper GPUs / 4000-series)
 - [ ] Implement loading arguments from JSON
