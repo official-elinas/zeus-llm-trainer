@@ -34,7 +34,7 @@ def train(
     data_path: str = "dataset.json",
     # HF Trainer params
     output_dir: str = "./lora-alpaca",
-    optim: str = "adamw_torch",
+    optim: str = "adamw_torch_fused",
     num_train_epochs: int = 3,
     learning_rate: float = 3e-4,
     per_device_train_batch_size: int = 4,
@@ -116,7 +116,7 @@ def train(
         training_type = "fp16" if train_fp16 else "4bit" if train_4bit else "8bit"
         training_method = "LoRA" if not is_finetune else "Finetune"
         print(
-            f"Training Alpaca-LoRA model with params:\n"
+            f"Training model with the following params:\n"
             f"base_model: {base_model}\n"
             f"data_path: {data_path}\n"
             f"output_dir: {output_dir}\n"
