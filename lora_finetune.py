@@ -50,10 +50,10 @@ def train(
     # one must NOT be 0
     gradient_accumulation_steps: int = 0,
     # alpaca-lora training hyper/params
+    is_finetune: bool = False,
     global_batch_size: int = 0,
     cutoff_len: int = 512,
     val_set_size: int = 2000,
-    is_finetune: bool = False,
     train_fp16: bool = False,
     train_4bit: bool = False,
     use_gradient_checkpointing: bool = False,
@@ -82,7 +82,7 @@ def train(
     warnings.filterwarnings('ignore', category=UserWarning, module='bitsandbytes.autograd._functions')
 
     # TODO: option to load config from json
-    # argument check
+
     if train_fp16 and train_4bit:
         raise Exception("Both --train_fp16 and --train_4bit cannot be used at the same time.")
 
@@ -114,12 +114,14 @@ def train(
     # Done - add: Global batch size = Local batch size per device * Number of devices * Gradient accumulation steps
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
         training_type = "fp16" if train_fp16 else "4bit" if train_4bit else "8bit"
-        # TODO: split out lora prints for finetune
+        training_method = "LoRA" if not is_finetune else "Finetune"
         print(
             f"Training Alpaca-LoRA model with params:\n"
             f"base_model: {base_model}\n"
             f"data_path: {data_path}\n"
             f"output_dir: {output_dir}\n"
+            f"training_method: {training_method}\n"
+            f"using DDP: {ddp}\n"
             f"optimizer: {optim}\n"
             f"training_type: {training_type}\n"
             f"learning_rate: {learning_rate}\n"
@@ -130,12 +132,16 @@ def train(
             f"warmup_ratio: {warmup_ratio}\n"
             f"cutoff_len: {cutoff_len}\n"
             f"val_set_size: {val_set_size}\n"
+        )
+        if not is_finetune:
+            print(
+                f"lora_r: {lora_r}\n"
+                f"lora_alpha: {lora_alpha}\n"
+                f"lora_dropout: {lora_dropout}\n"
+                f"lora_target_modules: {lora_target_modules}\n"
+            )
+        print(
             f"max_grad_norm: {max_grad_norm}\n"
-            f"using DDP: {ddp}\n"
-            f"lora_r: {lora_r}\n"
-            f"lora_alpha: {lora_alpha}\n"
-            f"lora_dropout: {lora_dropout}\n"
-            f"lora_target_modules: {lora_target_modules}\n"
             f"train_on_inputs: {train_on_inputs}\n"
             f"xformers_enabled: {use_xformers}\n"
             f"add_eos_token: {add_eos_token}\n"
@@ -150,7 +156,7 @@ def train(
     assert (
         base_model
     ), "Please specify a --base_model, e.g. --base_model='elinas/llama-7b-hf-transformers-4.29'"
-        
+
     # Check if parameter passed or if set within environ
     use_wandb = len(wandb_project) > 0 or (
         "WANDB_PROJECT" in os.environ and len(os.environ["WANDB_PROJECT"]) > 0
@@ -164,6 +170,7 @@ def train(
         os.environ["WANDB_LOG_MODEL"] = wandb_log_model
 
     # check if the user wants to train in fp16 to adjust the way the model is loaded
+    # note that it will finetune in 8bit unless specified
     load_in_8bit = True
     if train_fp16:
         load_in_8bit = False
@@ -178,6 +185,7 @@ def train(
     else:
         # assume that default is 8bit, fp16 is optional (above) and the last option is 4bit
         # TODO: look into "double quant" config
+        # https://huggingface.co/blog/4bit-transformers-bitsandbytes#nested-quantization
         nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -248,71 +256,24 @@ def train(
     if use_gradient_checkpointing:
         model.gradient_checkpointing_enable()
 
-    if not train_fp16:
+    if not train_fp16 and not is_finetune:
         model = prepare_model_for_kbit_training(model)
 
-    config = LoraConfig(
-        r=lora_r,
-        lora_alpha=lora_alpha,
-        target_modules=lora_target_modules,
-        lora_dropout=lora_dropout,
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
-    model = get_peft_model(model, config)
+    if not is_finetune:
+        config = LoraConfig(
+            r=lora_r,
+            lora_alpha=lora_alpha,
+            target_modules=lora_target_modules,
+            lora_dropout=lora_dropout,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model, config)
 
     if not ddp and torch.cuda.device_count() > 1:
         # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
         model.is_parallelizable = True
         model.model_parallel = True
-
-    # TODO: look into additional args later. not that important right now.
-    # parser = argparse.ArgumentParser(description='Additional non-default HF arguments that can be passed')
-    #
-    # # Parse the arguments and create a TrainingArguments object
-    # args, unknown_args = parser.parse_known_args()
-    #
-    # # TODO: remove when done testing
-    # print(f'args: {args}')
-    # print(f'unknown_args: {unknown_args}')
-    #
-    # # ignore program specific arguments as they can't be used in the trainer args
-    # program_args = ['base_model', 'batch_size', 'data_path', 'cutoff_len', 'val_set_size', 'lora_target_modules',
-    #                 'lora_r', 'lora_alpha', 'train_on_inputs']
-    #
-    # # TODO: this can be empty as we removed the default parameter
-    # training_args_dict = {
-    #     **{arg: getattr(args, arg) for arg in vars(args)},
-    # }
-    #
-    # # Note: The user is required to pass valid non-default HF trainer args otherwise the training will fail to start
-    # # Additionally, not all arguments work together, so it's important to be aware of what is being passed together
-    # for arg in unknown_args:
-    #     if arg.startswith('--'):
-    #         arg_name = arg[2:]
-    #         print(f'arg name: {arg_name}')
-    #         if arg_name.split('=')[0] not in program_args:
-    #             arg_value = True
-    #             if '=' in arg:
-    #                 arg_value = arg.split('=', 1)[1]
-    #             training_args_dict[arg_name.split('=')[0]] = arg_value
-    # # TODO: need to parse this and move it into the additional HF parameters used - remove debugging when done
-    # print(json.dumps(training_args_dict, indent=4))
-    #
-    # # debug
-    # print('Using args: ')
-    # for args in training_args_dict:
-    #     print(args)
-    #
-    # training_args = TrainingArguments(**training_args_dict)
-    if int(os.environ.get("LOCAL_RANK", 0)) == 0:
-        # using local rank to print once
-        print(
-            f"Additional HF params used:\n"
-
-        )
-        # TODO: print additional passed HF trainer arguments here
-        pass
 
     # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.Trainer
     args = transformers.TrainingArguments(
@@ -353,7 +314,8 @@ def train(
             resume_from_checkpoint, "pytorch_model.bin"
         )  # Full checkpoint
         print("Resuming from full checkpoint")
-        if not os.path.exists(checkpoint_name):
+
+        if not os.path.exists(checkpoint_name) and not is_finetune:
             checkpoint_name = os.path.join(
                 resume_from_checkpoint, "adapter_model.bin"
             )  # only LoRA model - LoRA config above has to fit
@@ -361,15 +323,17 @@ def train(
             resume_from_checkpoint = (
                 False  # So the trainer won't try loading its state
             )
+
         # The two files above have a different name depending on how they were saved, but are actually the same.
-        if os.path.exists(checkpoint_name):
+        if os.path.exists(checkpoint_name) and not is_finetune:
             print(f"Restarting from {checkpoint_name}")
             adapters_weights = torch.load(checkpoint_name)
             set_peft_model_state_dict(model, adapters_weights)
-        else:
+        elif not is_finetune:
             print(f"Checkpoint {checkpoint_name} not found")
 
-    model.print_trainable_parameters()  # Be more transparent about the % of trainable params.
+    if not is_finetune:
+        model.print_trainable_parameters()  # Be more transparent about the % of trainable params.
 
     if val_set_size > 0:
         train_val = data["train"].train_test_split(
@@ -385,12 +349,17 @@ def train(
         train_data = data["train"].shuffle().map(generate_and_tokenize_prompt)
         val_data = None
 
+    # if we're finetuning, we don't need the peft model callback
+    callbacks = [SavePeftModelCallback]
+    if is_finetune:
+        callbacks = []
+
     trainer = transformers.Trainer(
         model=model,
         train_dataset=train_data,
         eval_dataset=val_data,
         args=args,
-        callbacks=[SavePeftModelCallback],
+        callbacks=callbacks,
         data_collator=transformers.DataCollatorForSeq2Seq(
             tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True
         )
@@ -406,10 +375,14 @@ def train(
         model = torch.compile(model)
 
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+    # saves the trainer state parameters
     trainer.save_state()
+    # saves the model weights to be loaded from_pretrained or resuming training
     trainer.save_model()
 
-    model.save_pretrained(output_dir)
+    if not is_finetune:
+        # this saves the final LoRA adapter at the end of training in the main directory specified
+        model.save_pretrained(output_dir)
 
 
 def calculate_batches(global_batch_size=0, per_device_train_batch_size=1, gradient_accumulation_steps=1, num_devices=1):
