@@ -57,8 +57,8 @@ def train(
     train_fp16: bool = False,
     train_4bit: bool = False,
     use_gradient_checkpointing: bool = False,
+    use_flash_attn: bool = False,
     use_xformers: bool = False,
-    use_sdp_attn: bool = False,
     # lora-specific hyperparams
     is_lora: bool = True,
     lora_r: int = 8,
@@ -86,14 +86,14 @@ def train(
     if train_fp16 and train_4bit:
         raise Exception("Both --train_fp16 and --train_4bit cannot be used at the same time.")
 
-    if use_xformers and not use_sdp_attn:
+    if use_xformers and not use_flash_attn:
         from utils.monkeypatches import apply_xformers_monkeypatches
         apply_xformers_monkeypatches()
-    elif not use_xformers and use_sdp_attn:
-        from utils.monkeypatches import apply_sdp_attention_monkeypatch
-        apply_sdp_attention_monkeypatch()
-    elif use_xformers and use_sdp_attn:
-        raise Exception("Both --use_xformers and --use_sdp_attn cannot be used at the same time.")
+    elif not use_xformers and use_flash_attn:
+        from utils.monkeypatches import apply_flash_attention_monkeypatch
+        apply_flash_attention_monkeypatch()
+    elif use_xformers and use_flash_attn:
+        raise Exception("Both --use_xformers and --use_flash_attn cannot be used at the same time.")
 
     prompter = Prompter(prompt_template_name)
 
@@ -143,6 +143,7 @@ def train(
         print(
             f"max_grad_norm: {max_grad_norm}\n"
             f"train_on_inputs: {train_on_inputs}\n"
+            f"flash_attention_enabled: {use_flash_attn}\n"
             f"xformers_enabled: {use_xformers}\n"
             f"add_eos_token: {add_eos_token}\n"
             f"group_by_length: {group_by_length}\n"
@@ -228,6 +229,7 @@ def train(
 
     # TODO: tokenization before training
     def generate_and_tokenize_prompt(data_point):
+        # TODO: no need to enforce input
         full_prompt = prompter.generate_prompt(
             data_point["instruction"],
             data_point["input"],
@@ -282,7 +284,7 @@ def train(
         warmup_ratio=warmup_ratio,  # default 0.06 as recommended by MS LoRA
         num_train_epochs=num_train_epochs,
         learning_rate=learning_rate,
-        fp16=True,
+        fp16=True,  # mixed precision, bf16 seems like a good option as well
         logging_steps=logging_steps,
         optim=optim,
         evaluation_strategy="steps" if val_set_size > 0 else "no",
