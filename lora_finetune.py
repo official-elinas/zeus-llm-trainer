@@ -87,8 +87,11 @@ def train(
         raise Exception("Both --train_fp16 and --train_4bit cannot be used at the same time.")
 
     if use_xformers and not use_flash_attn:
-        from utils.monkeypatches import apply_xformers_monkeypatches
-        apply_xformers_monkeypatches()
+        try:
+            from utils.monkeypatches import apply_xformers_monkeypatches
+            apply_xformers_monkeypatches()
+        except ModuleNotFoundError:
+            print('Xformers not found. Skipping')
     elif not use_xformers and use_flash_attn:
         from utils.monkeypatches import apply_flash_attention_monkeypatch
         apply_flash_attention_monkeypatch()
