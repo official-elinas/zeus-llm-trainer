@@ -153,6 +153,7 @@ def train(
             f"train_on_inputs: {train_on_inputs}\n"
             f"flash_attention_enabled: {use_flash_attn}\n"
             f"xformers_enabled: {use_xformers}\n"
+            f"sdp_attention_enabled: {use_sdp_attn}\n"
             f"add_eos_token: {add_eos_token}\n"
             f"group_by_length: {group_by_length}\n"
             f"wandb_project: {wandb_project}\n"
