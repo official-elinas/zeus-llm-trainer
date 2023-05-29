@@ -4,8 +4,11 @@ import typing as t
 
 import torch
 import transformers
-from xformers.ops import memory_efficient_attention
 
+try:
+    from xformers.ops import memory_efficient_attention
+except ModuleNotFoundError:
+    print('Xformers not found. Skipping')
 
 def llama_attention_forward(
     self,
