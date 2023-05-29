@@ -59,6 +59,7 @@ def train(
     use_gradient_checkpointing: bool = False,
     use_flash_attn: bool = False,
     use_xformers: bool = False,
+    use_sdp_attn: bool = False,
     # lora-specific hyperparams
     is_lora: bool = True,
     lora_r: int = 8,
@@ -86,17 +87,21 @@ def train(
     if train_fp16 and train_4bit:
         raise Exception("Both --train_fp16 and --train_4bit cannot be used at the same time.")
 
-    if use_xformers and not use_flash_attn:
+    if use_xformers and not use_flash_attn and not use_sdp_attn:
         try:
             from utils.monkeypatches import apply_xformers_monkeypatches
             apply_xformers_monkeypatches()
         except ModuleNotFoundError:
-            print('Xformers not found. Skipping')
-    elif not use_xformers and use_flash_attn:
+            print('Xformers module not found. Skipping')
+    elif use_flash_attn and not use_xformers and not use_sdp_attn:
         from utils.monkeypatches import apply_flash_attention_monkeypatch
         apply_flash_attention_monkeypatch()
-    elif use_xformers and use_flash_attn:
-        raise Exception("Both --use_xformers and --use_flash_attn cannot be used at the same time.")
+    elif use_sdp_attn and not use_xformers and not use_flash_attn:
+        from utils.monkeypatches import apply_sdp_attention_monkeypatch
+        apply_sdp_attention_monkeypatch()
+    elif sum([use_xformers, use_flash_attn, use_sdp_attn]) != 1:
+        raise Exception("Attention methods | --use_xformers | --use_flash_attn | --use_sdp_attn | "
+                        "cannot be used at the same time.")
 
     prompter = Prompter(prompt_template_name)
 
