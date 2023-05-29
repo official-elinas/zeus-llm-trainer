@@ -97,6 +97,7 @@ def train(
         from utils.monkeypatches import apply_flash_attention_monkeypatch
         apply_flash_attention_monkeypatch()
     elif use_sdp_attn and not use_xformers and not use_flash_attn:
+        raise Exception("SDP Attention is currently broken. Please do not use it.")
         from utils.monkeypatches import apply_sdp_attention_monkeypatch
         apply_sdp_attention_monkeypatch()
     elif sum([use_xformers, use_flash_attn, use_sdp_attn]) != 1:
