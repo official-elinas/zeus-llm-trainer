@@ -1,4 +1,17 @@
 # Zeus LLM Trainer
+- 2023/05/30 - **pretokenization WIP & repo name change**
+   - **Important:** `lora_finetune.py` has been renamed to `finetune.py`
+   - Adding a way to pretokenize to save time when re-running training, especially for larger datasets
+   - I'm preparing to change the repo name soon, though I have not decided on a final name.
+- 2023/05/28 - **working on getting flash-attention functional**
+   - The current `flash-attn` library fails to install due to a torch import error and trying to install an older
+     version just results in other errors. Currently, there is an open issue about this and will be looking into it more.
+   - PyTorch SDP Attention was (re)-implemented but doesn't work right, so don't use it unless you want no training to happen due to abnormal loss.
+     Don't know how much time if any I will commit further to this since `flash-attn` seems like the better overall option
+     and you can already use `xformers` for memory savings.
+   - Another issue - the latest `bitsandbytes` still has a memory issue and will often OOM when saving a checkpoint when
+     training in 8 bit. I'm not sure if this is an issue in 4bit, but I'm training a 13B QLoRA with a decent chunk of memory free on a single 3090.
+   - **If you do an 8 bit lora, I recommend switching to `bitsandbytes==0.37.2` or roll the dice with the latest version.**
 - 2023/05/27 - **4bit QLoRA, fp16 training and more**
    - 4bit QLora training has been implemented and is usable by calling the `--train_4bit` flag. No other configuration 
      is needed on top of the current LoRA config. 
@@ -57,6 +70,7 @@
 - [x] Implement 4bit QLoRA
 - [ ] Tokenize each unique dataset once (separate script) to save pre-train time or tokenize every time by default
 - [x] Implement full finetuning as an option (not LoRA) - **currently untested**
+- [ ] Implement `flash-attention` for llama - https://github.com/HazyResearch/flash-attention/
 - [ ] Working Deepspeed support (currently untested, will test when I get back to 33b training)
 - [ ] FP8 training using accelerate (Hopper GPUs / 4000-series)
 - [ ] Implement loading arguments from JSON
@@ -94,7 +108,7 @@ PRs adapting this code to support larger models are always welcome.
 Example usage:
 
 ```bash
-python lora_finetune.py \
+python finetune.py \
     --base_model 'elinas/llama-7b-hf-transformers-4.29' \
     --data_path 'yahma/alpaca-cleaned' \
     --output_dir './lora-alpaca'
@@ -103,7 +117,7 @@ python lora_finetune.py \
 We can also tweak our hyperparameters:
 
 ```bash
-python lora_finetune.py \
+python finetune.py \
     --base_model 'elinas/llama-7b-hf-transformers-4.29' \
     --data_path 'dataset.json' \
     --output_dir './lora-alpaca' \
@@ -123,7 +137,7 @@ python lora_finetune.py \
 
 Example DDP Usage (2 GPUs, adjust top line based on GPU count):
 ```bash
-OMP_NUM_THREADS=12 WORLD_SIZE=2 torchrun --nproc_per_node=2 --master_port=1234 lora_finetune.py \
+OMP_NUM_THREADS=12 WORLD_SIZE=2 torchrun --nproc_per_node=2 --master_port=1234 finetune.py \
     --base_model='elinas/llama-7b-hf-transformers-4.29' \
     --data_path='dataset.json' \
     --num_train_epochs=3 \
