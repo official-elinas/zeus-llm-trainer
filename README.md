@@ -1,4 +1,14 @@
 # Zeus LLM Trainer
+- 2023/06/02 - **4bit QLoRA test, release, and some notes**
+   - 4bit QLoRA was tested and it performed very well in both end result and performance overall. Using a rough estimate based on
+     compute I used, it is about 22% faster (or more) than 8bit LoRA, with the added benefit of fitting on smaller cards. Inference
+     was not impacted much if at all compared to 8bit and generates similar outputs in 4bit. Props to Tim Dettmers for releasing this
+     method and getting it integrated into Transformers.
+   - Pre-tokenization is almost ready, but not quite there, though I am comfortable with everything functioning here, except for the
+     untested finetune feature (which should work). I just don't have the time or resources to test a finetune right now.
+   - New name will be "Zeus-llm-trainer" and the repo name will be changed which will break remotes, so make sure to update your remote
+     repository or re-clone it.
+   - That's really it for now, and automatic handling of pre-tokenization using Arrow format will be finished soon.
 - 2023/05/30 - **pretokenization WIP & repo name change**
    - **Important:** `lora_finetune.py` has been renamed to `finetune.py`
    - Adding a way to pretokenize to save time when re-running training, especially for larger datasets
