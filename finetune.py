@@ -3,8 +3,10 @@ import sys
 import argparse
 import json
 import warnings
+from pathlib import Path
 from typing import List
 
+import datasets
 import fire
 import torch
 import transformers
@@ -278,34 +280,6 @@ def train(
         model.is_parallelizable = True
         model.model_parallel = True
 
-    # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.Trainer
-    args = transformers.TrainingArguments(
-        per_device_train_batch_size=per_device_train_batch_size,
-        gradient_accumulation_steps=gradient_accumulation_steps,
-        warmup_ratio=warmup_ratio,  # default 0.06 as recommended by MS LoRA
-        num_train_epochs=num_train_epochs,
-        learning_rate=learning_rate,
-        fp16=True,  # mixed precision, bf16 seems like a good option as well
-        logging_steps=logging_steps,
-        optim=optim,
-        evaluation_strategy="steps" if val_set_size > 0 else "no",
-        save_strategy="steps",
-        eval_steps=save_and_eval_steps if val_set_size > 0 else None,
-        save_steps=save_and_eval_steps,
-        output_dir=output_dir,
-        save_total_limit=save_total_limit,
-        load_best_model_at_end=True if val_set_size > 0 else False,
-        ddp_find_unused_parameters=False if ddp else None,
-        group_by_length=group_by_length,
-        # ddp_timeout=1800,
-        report_to="wandb" if use_wandb else None,
-        run_name=wandb_run_name if use_wandb else None,
-        seed=seed,
-        max_grad_norm=max_grad_norm  # if not use_xformers else max_grad_norm if max_grad_norm != 1.0 else 0.5
-        # sharded_ddp="simple"
-        # **vars(training_args)
-    )
-
     if data_path.endswith(".json") or data_path.endswith(".jsonl"):
         data = load_dataset("json", data_files=data_path)
     else:
@@ -345,17 +319,59 @@ def train(
         train_data = (
             train_val["train"].shuffle().map(generate_and_tokenize_prompt)
         )
+        train_data.save_to_disk('./tokenized/')
         val_data = (
             train_val["test"].shuffle().map(generate_and_tokenize_prompt)
         )
+        val_data.save_to_disk('./tokenized/')
     else:
+        save_to_path = f'./tokenized/{os.path.splitext(data_path)[0]}'
+        # TODO: trying tokenization on the fly (why is loading not working??)
+        # if not os.path.exists(save_to_path):
+        print("Tokenizing new dataset")
         train_data = data["train"].shuffle().map(generate_and_tokenize_prompt)
+        train_data.save_to_disk(save_to_path)
+        # else:
+        #     print("Loading original tokenized")
+        #     train_data = datasets.load_from_disk(save_to_path)
         val_data = None
+
+    something = None
+
+    # current_train_dataset = data["cache_files"]
+    # print(f"Current cached train dataset {current_train_dataset}")
 
     # if we're finetuning, we don't need the peft model callback
     callbacks = [SavePeftModelCallback]
     if is_finetune:
         callbacks = []
+    # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.Trainer
+    args = transformers.TrainingArguments(
+        per_device_train_batch_size=per_device_train_batch_size,
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        warmup_ratio=warmup_ratio,  # default 0.06 as recommended by MS LoRA
+        num_train_epochs=num_train_epochs,
+        learning_rate=learning_rate,
+        fp16=True,  # mixed precision, bf16 seems like a good option as well
+        logging_steps=logging_steps,
+        optim=optim,
+        evaluation_strategy="steps" if val_set_size > 0 else "no",
+        save_strategy="steps",
+        eval_steps=save_and_eval_steps if val_set_size > 0 else None,
+        save_steps=save_and_eval_steps,
+        output_dir=output_dir,
+        save_total_limit=save_total_limit,
+        load_best_model_at_end=True if val_set_size > 0 else False,
+        ddp_find_unused_parameters=False if ddp else None,
+        group_by_length=group_by_length,
+        # ddp_timeout=1800,
+        report_to="wandb" if use_wandb else None,
+        run_name=wandb_run_name if use_wandb else None,
+        seed=seed,
+        max_grad_norm=max_grad_norm  # if not use_xformers else max_grad_norm if max_grad_norm != 1.0 else 0.5
+        # sharded_ddp="simple"
+        # **vars(training_args)
+    )
 
     trainer = transformers.Trainer(
         model=model,
