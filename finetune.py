@@ -326,14 +326,14 @@ def train(
         val_data.save_to_disk('./tokenized/')
     else:
         save_to_path = f'./tokenized/{os.path.splitext(data_path)[0]}'
-        # TODO: trying tokenization on the fly (why is loading not working??)
-        # if not os.path.exists(save_to_path):
-        print("Tokenizing new dataset")
-        train_data = data["train"].shuffle().map(generate_and_tokenize_prompt)
-        train_data.save_to_disk(save_to_path)
-        # else:
-        #     print("Loading original tokenized")
-        #     train_data = datasets.load_from_disk(save_to_path)
+        # TODO: trying tokenization on the fly - WIP
+        if not os.path.exists(save_to_path):
+            print("Tokenizing new dataset")
+            train_data = data["train"].shuffle().map(generate_and_tokenize_prompt)
+            train_data.save_to_disk(save_to_path)
+        else:
+            print("Loading original tokenized")
+            train_data = datasets.load_from_disk(save_to_path)
         val_data = None
 
     something = None
