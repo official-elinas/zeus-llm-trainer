@@ -57,6 +57,7 @@ def train(
     cutoff_len: int = 512,
     val_set_size: int = 2000,
     train_fp16: bool = False,
+    train_bf16: bool = False,
     train_4bit: bool = False,
     use_gradient_checkpointing: bool = False,
     use_flash_attn: bool = False,
@@ -357,10 +358,9 @@ def train(
         warmup_ratio=warmup_ratio,  # default 0.06 as recommended by MS LoRA
         num_train_epochs=num_train_epochs,
         learning_rate=learning_rate,
-        # TODO OPTION OF BF16
         # TODO Look into tf32 - i don't think the benefit is worth the extra vram
-        fp16=True,  # mixed precision, bf16 seems like a good option as well
-        bf16=False,
+        fp16=True if not train_bf16 else False,  # mixed precision, bf16 seems like a good option as well
+        bf16=train_bf16,
         logging_steps=logging_steps,
         optim=optim,
         evaluation_strategy="steps" if val_set_size > 0 else "no",
