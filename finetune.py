@@ -277,6 +277,8 @@ def train(
 
     if not ddp and torch.cuda.device_count() > 1:
         # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
+        # TODO LOOK INTO THIS VS PASSING fsdp + fsdp_config
+        #  https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments.fsdp
         model.is_parallelizable = True
         model.model_parallel = True
 
@@ -312,21 +314,26 @@ def train(
     if not is_finetune:
         model.print_trainable_parameters()  # Be more transparent about the % of trainable params.
 
+    save_to_path = f'./tokenized/{os.path.splitext(data_path)[0]}'
     if val_set_size > 0:
-        train_val = data["train"].train_test_split(
-            test_size=val_set_size, shuffle=True, seed=42
-        )
-        train_data = (
-            train_val["train"].shuffle().map(generate_and_tokenize_prompt)
-        )
-        train_data.save_to_disk('./tokenized/')
-        val_data = (
-            train_val["test"].shuffle().map(generate_and_tokenize_prompt)
-        )
-        val_data.save_to_disk('./tokenized/')
+        if not os.path.exists(save_to_path) and not os.path.exists(f"{save_to_path}_val"):
+            print("Tokenizing new dataset split for train and validation")
+            train_val = data["train"].train_test_split(
+                test_size=val_set_size, shuffle=True, seed=42
+            )
+            train_data = (
+                train_val["train"].shuffle().map(generate_and_tokenize_prompt)
+            )
+            val_data = (
+                train_val["test"].shuffle().map(generate_and_tokenize_prompt)
+            )
+            train_data.save_to_disk(save_to_path)
+            val_data.save_to_disk(f"{save_to_path}_val")
+        else:
+            print("Loading original tokenized train and val datasets")
+            train_data = datasets.load_from_disk(save_to_path)
+            val_data = datasets.load_from_disk(f"{save_to_path}_val")
     else:
-        save_to_path = f'./tokenized/{os.path.splitext(data_path)[0]}'
-        # TODO: trying tokenization on the fly - WIP
         if not os.path.exists(save_to_path):
             print("Tokenizing new dataset")
             train_data = data["train"].shuffle().map(generate_and_tokenize_prompt)
@@ -335,8 +342,6 @@ def train(
             print("Loading original tokenized")
             train_data = datasets.load_from_disk(save_to_path)
         val_data = None
-
-    something = None
 
     # current_train_dataset = data["cache_files"]
     # print(f"Current cached train dataset {current_train_dataset}")
@@ -352,7 +357,10 @@ def train(
         warmup_ratio=warmup_ratio,  # default 0.06 as recommended by MS LoRA
         num_train_epochs=num_train_epochs,
         learning_rate=learning_rate,
+        # TODO OPTION OF BF16
+        # TODO Look into tf32 - i don't think the benefit is worth the extra vram
         fp16=True,  # mixed precision, bf16 seems like a good option as well
+        bf16=False,
         logging_steps=logging_steps,
         optim=optim,
         evaluation_strategy="steps" if val_set_size > 0 else "no",
