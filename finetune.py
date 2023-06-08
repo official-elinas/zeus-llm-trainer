@@ -11,7 +11,7 @@ import fire
 import torch
 import transformers
 from transformers import TrainingArguments, BitsAndBytesConfig
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 
 """
 Unused imports:
@@ -332,8 +332,8 @@ def train(
             val_data.save_to_disk(f"{save_to_path}_val")
         else:
             print("Loading original tokenized train and val datasets")
-            train_data = datasets.load_from_disk(save_to_path)
-            val_data = datasets.load_from_disk(f"{save_to_path}_val")
+            train_data = load_from_disk(save_to_path)
+            val_data = load_from_disk(f"{save_to_path}_val")
     else:
         if not os.path.exists(save_to_path):
             print("Tokenizing new dataset")
@@ -341,7 +341,7 @@ def train(
             train_data.save_to_disk(save_to_path)
         else:
             print("Loading original tokenized")
-            train_data = datasets.load_from_disk(save_to_path)
+            train_data = load_from_disk(save_to_path)
         val_data = None
 
     # current_train_dataset = data["cache_files"]
