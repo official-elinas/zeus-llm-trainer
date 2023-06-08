@@ -86,8 +86,9 @@ def train(
 
     # TODO: option to load config from json
 
-    if train_fp16 and train_4bit:
-        raise Exception("Both --train_fp16 and --train_4bit cannot be used at the same time.")
+    if sum([train_fp16, train_bf16, train_4bit]) >= 2:
+        raise Exception("The following parameters | --train_fp16 | --train_bf16 | --train_4bit | "
+                        "cannot be used at the same time.")
 
     if use_xformers and not use_flash_attn:
         try:
@@ -115,9 +116,8 @@ def train(
                                                                            per_device_train_batch_size,
                                                                            gradient_accumulation_steps)
 
-    # Done - add: Global batch size = Local batch size per device * Number of devices * Gradient accumulation steps
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
-        training_type = "fp16" if train_fp16 else "4bit" if train_4bit else "8bit"
+        training_type = "fp16" if train_fp16 else "bf16" if train_bf16 else "4bit" if train_4bit else "8bit"
         training_method = "LoRA" if not is_finetune else "Finetune"
         print(
             f"Training model with the following params:\n"
@@ -176,15 +176,14 @@ def train(
 
     # check if the user wants to train in fp16 to adjust the way the model is loaded
     # note that it will finetune in 8bit unless specified
-    load_in_8bit = True
-    if train_fp16:
-        load_in_8bit = False
+    load_in_8bit = not (train_fp16 or train_bf16)
+    torch_dtype = torch.float16 if train_fp16 else torch.bfloat16
 
     if not train_4bit:
         model = LlamaForCausalLM.from_pretrained(
             base_model,
             load_in_8bit=load_in_8bit,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=torch_dtype,
             device_map=device_map,
         )
     else:
@@ -231,9 +230,7 @@ def train(
 
         return result
 
-    # TODO: tokenization before training
     def generate_and_tokenize_prompt(data_point):
-        # TODO: no need to enforce input
         full_prompt = prompter.generate_prompt(
             data_point["instruction"],
             data_point["input"],
@@ -262,7 +259,7 @@ def train(
     if use_gradient_checkpointing:
         model.gradient_checkpointing_enable()
 
-    if not train_fp16 and not is_finetune:
+    if not is_finetune and (not train_fp16 or not train_bf16):
         model = prepare_model_for_kbit_training(model)
 
     if not is_finetune:
@@ -358,7 +355,6 @@ def train(
         warmup_ratio=warmup_ratio,  # default 0.06 as recommended by MS LoRA
         num_train_epochs=num_train_epochs,
         learning_rate=learning_rate,
-        # TODO Look into tf32 - i don't think the benefit is worth the extra vram
         fp16=True if not train_bf16 else False,  # mixed precision, bf16 seems like a good option as well
         bf16=train_bf16,
         logging_steps=logging_steps,
