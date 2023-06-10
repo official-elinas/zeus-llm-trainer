@@ -8,7 +8,8 @@ sentencepiece
 torch==2.0.1
 scipy
 einops
-flash_attn
+#
+deepspeed
 wandb
 # these needs to be installed from source due to 4bit QLoRA
 git+https://github.com/huggingface/accelerate.git
