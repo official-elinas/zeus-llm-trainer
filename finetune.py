@@ -24,6 +24,7 @@ from peft import (
     get_peft_model,
     get_peft_model_state_dict,
     prepare_model_for_kbit_training,
+    prepare_model_for_int8_training,
     set_peft_model_state_dict,
 )
 from transformers import LlamaForCausalLM, LlamaTokenizer
@@ -260,7 +261,10 @@ def train(
         model.gradient_checkpointing_enable()
 
     if not is_finetune and (not train_fp16 or not train_bf16):
-        model = prepare_model_for_kbit_training(model)
+        if train_4bit:
+            model = prepare_model_for_kbit_training(model)
+        else:
+            model = prepare_model_for_int8_training(model)
 
     if not is_finetune:
         config = LoraConfig(
