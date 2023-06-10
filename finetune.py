@@ -345,13 +345,15 @@ def train(
             train_data = load_from_disk(save_to_path)
         val_data = None
 
-    # current_train_dataset = data["cache_files"]
-    # print(f"Current cached train dataset {current_train_dataset}")
 
     # if we're finetuning, we don't need the peft model callback
     callbacks = [SavePeftModelCallback]
     if is_finetune:
-        callbacks = []
+        callbacks = None
+
+    if fsdp_params == '':
+        fsdp_params = False
+
     # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.Trainer
     args = transformers.TrainingArguments(
         per_device_train_batch_size=per_device_train_batch_size,
