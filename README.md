@@ -44,11 +44,11 @@
 
 
 ## Local Setup
-1. Install dependencies
-
-   ```bash
-   pip install -r requirements.txt
-   ```
+1. Install dependencies in a virtualenv preferably 
+    * Create the venv - `python -m venv venv`
+    * Activate the venv - `source venv/bin/actiate`
+    * Install the requirements - `pip install -r requirements.txt`
+   
 2. If you're using `flash_attn` or `xformers` install the `ninja` package **first** and manually install either one in
    `optional_requirements.txt`
 
