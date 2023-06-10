@@ -54,6 +54,7 @@ def train(
     gradient_accumulation_steps: int = 0,
     # alpaca-lora training hyper/params
     is_finetune: bool = False,
+    fsdp_params: str = '',
     global_batch_size: int = 0,
     cutoff_len: int = 512,
     val_set_size: int = 2000,
@@ -74,7 +75,7 @@ def train(
     ],
     # llm hyperparams
     train_on_inputs: bool = True,  # if False, masks out inputs in loss
-    add_eos_token: bool = False,
+    add_eos_token: bool = True,
     # wandb params
     wandb_project: str = "",
     wandb_run_name: str = "",
@@ -378,8 +379,8 @@ def train(
         report_to="wandb" if use_wandb else None,
         run_name=wandb_run_name if use_wandb else None,
         seed=seed,
-        max_grad_norm=max_grad_norm  # if not use_xformers else max_grad_norm if max_grad_norm != 1.0 else 0.5
-        # sharded_ddp="simple"
+        max_grad_norm=max_grad_norm,  # if not use_xformers else max_grad_norm if max_grad_norm != 1.0 else 0.5
+        fsdp=fsdp_params
         # **vars(training_args)
     )
 
