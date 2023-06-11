@@ -33,7 +33,7 @@
    * `flash-attention` (`--use_flash_attn`)
    * `xformers` (`--use_xformers`)
 * Optimization Techniques
-   * 8bit/int4 training (LoRA and Finetune - default unless alternate precision is specified, ie. bf16, fp16, 4bit)
+   * 8bit/int8 training (LoRA and Finetune - default unless alternate precision is specified, ie. bf16, fp16, 4bit)
    * 4bit/int4 training (QLoRA `--train_4bit`)
    * DeepSpeed - disabled by default - pass in a config like (`--deepspeed='/path/to/deepspeed_config.json'`)
    * Fully Sharded Data Parallel (FSDP) - disabled by default - (example `--fsdp_params "full_shard auto_wrap"`)
