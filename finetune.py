@@ -13,16 +13,9 @@ import transformers
 from transformers import TrainingArguments, BitsAndBytesConfig
 from datasets import load_dataset, load_from_disk
 
-"""
-Unused imports:
-import torch.nn as nn
-import bitsandbytes as bnb
-"""
-
 from peft import (
     LoraConfig,
     get_peft_model,
-    get_peft_model_state_dict,
     prepare_model_for_kbit_training,
     prepare_model_for_int8_training,
     set_peft_model_state_dict,
