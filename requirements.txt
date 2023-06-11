@@ -1,15 +1,17 @@
-accelerate
 appdirs
 loralib
-bitsandbytes==0.37.2  # reports of OOM issues with higher versions
+bitsandbytes
 black
-# black[jupyter]
 datasets
 fire
-peft==0.3.0  # training lm_head requires a higher version of peft
-transformers==4.28.1
 sentencepiece
-xformers==0.0.19
-torch==2.0.0
+torch==2.0.1
+scipy
+einops
+#
+deepspeed
 wandb
-# gradio
+# these needs to be installed from source due to 4bit QLoRA
+git+https://github.com/huggingface/accelerate.git
+git+https://github.com/huggingface/transformers.git
+git+https://github.com/huggingface/peft.git
