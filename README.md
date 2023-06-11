@@ -1,5 +1,207 @@
-# Alpaca-LoRA-*optimized* (Final name TBD)
+# Zeus LLM Trainer
 
+## Table of Contents
+* [Local Setup](#local-setup)  
+* [LoRA Training](#lora-training) 
+* [Finetuning](#finetuning)
+* [Roadmap](#roadmap)
+* [Development Log](#development-log)
+
+## Currently Supported Features
+* Full LoRA and finetune support - see run examples below on run configurations for each.
+* All HuggingFace Models supported out of the box, though some might have special configuration requirements and may not support all listed features.
+* Saving of full LoRA model and adapters
+* Simple prompt templating engine for LLMs and your own can be made easily. Examples can be found in the `./templates` directory.
+  Call your unique template with `--prompt_template_name='template_name_str'` or it will default to Alpaca format.
+* One time tokenization
+   * The trainer will automatically tokenize your dataset once and reload in subsequent from the `./tokenized` directory.
+* Numerous arguments including, but not limited to (use `python finetune.py -h` for a full list of arguments or take a look at `finetune.py`)
+   * bf16 and fp16 support (`--use_bf16` OR `--use_fp16`)
+   * Optimizer parameter such as `adamw_torch`, `adamw_bnb_8bit`, and more with the default `adamw_torch_fused`.
+     Use `--optim='optimizer_name'` to change this. 
+   * Validation dataset split (`--val_set_size=num_samples`)
+      * Will split your dataset into `train` and `val` datasets with the number of samples defined by `--val_set_size=num_samples` 
+        or set it to 0 not perform validation. 
+   * Warmup Ratio (`--warmup_ratio=0.06` is the default)
+   * Logging Steps (`--logging_steps=5` is the default)
+   * Seed for training consistency between runs (`--seed=42` is the default)
+* Wandb Logging
+   * Project name (`wandb_project='project-name'`)
+   * Run name (`wandb_run_name='run-name'` - default random)
+   * Wandb watch (`--wandb_watch='all'` options: false | gradients | all - default False)
+* Optional attention replacement techniques for memory reduction and speed (must be installed)
+   * `flash-attention` (`--use_flash_attn`)
+   * `xformers` (`--use_xformers`)
+* Optimization Techniques
+   * 8bit/int8 training (LoRA and Finetune - default unless alternate precision is specified, ie. bf16, fp16, 4bit)
+   * 4bit/int4 training (QLoRA `--train_4bit`)
+   * DeepSpeed - disabled by default - pass in a config like (`--deepspeed='/path/to/deepspeed_config.json'`)
+   * Fully Sharded Data Parallel (FSDP) - disabled by default - (example `--fsdp_params "full_shard auto_wrap"`)
+   * Gradient Checkpointing (`--use_gradient_checkpointing`) - saves significant memory at the cost of quite a bit of speed.
+* Other Features
+   * Alternate batch size calculation using `--global_batch_size=<global_bsz>` instead of `--gradient_accumulation_steps=<num_steps>`
+   * Gradient normalization option (`max_grad_norm=1.0` default HF value)
+
+
+## Local Setup
+1. Install dependencies in a virtualenv preferably 
+    * Create the venv - `python -m venv venv`
+    * Activate the venv - `source venv/bin/actiate`
+    * Install the requirements - `pip install -r requirements.txt`
+   
+2. If you're using `flash_attn` or `xformers` install the `ninja` package **first** and manually install either one in
+   `optional_requirements.txt`
+
+3. For `bitsandbytes` Windows users can follow [these instructions](https://github.com/tloen/alpaca-lora/issues/17). 
+   If you are doing 8bit training, at the time of writing there seems to still exist a bug leading to OOM instances when 
+   saving in `bitsansbytes>0.37.2` so it's recommended to install that version if you will be doing **8bit/int4 training**.
+
+*Note that `bitsandbytes` is not officially supported on Windows, nor is serious training recommended on Windows.*
+
+## Run Examples
+
+### LoRA Training
+
+Example usage:
+
+```bash
+python finetune.py \
+    --base_model 'elinas/llama-7b-hf-transformers-4.29' \
+    --data_path 'hf/dataset_path' \
+    --output_dir './lora-alpaca'
+```
+`--data_path` can be a HuggingFace dataset or a local json/jsonl file but must have the **instruction, input, output** schema.
+
+We can also tweak our hyperparameters:
+
+```bash
+python finetune.py \
+    --base_model 'elinas/llama-7b-hf-transformers-4.29' \
+    --data_path 'dataset.json' \
+    --output_dir './lora-alpaca' \
+    --gradient_accumulation_steps 1 \
+    --per_device_train_batch_size 4 \
+    --num_train_epochs 3 \
+    --learning_rate 1e-4 \
+    --cutoff_len 1024 \
+    --val_set_size 2000 \
+    --lora_r 64 \
+    --lora_alpha 128 \
+    --lora_dropout 0.05 \
+    --lora_target_modules '[q_proj,v_proj]' \
+    --train_on_inputs \
+    --group_by_length
+```
+
+Example LoRA with DDP Usage (2 GPUs, adjust top line based on GPU count):
+```bash
+OMP_NUM_THREADS=12 WORLD_SIZE=2 torchrun --nproc_per_node=2 --master_port=1234 finetune.py \
+    --base_model='elinas/llama-7b-hf-transformers-4.29' \
+    --data_path='dataset.json' \
+    --num_train_epochs=3 \
+    --cutoff_len=2048 \
+    --group_by_length \
+    --val_set_size=2000 \
+    --output_dir='./7b-lora' \
+    --lora_target_modules='[q_proj,v_proj,k_proj,o_proj]' \
+    --lora_r=128 \
+    --lora_alpha=256 \
+    --gradient_accumulation_steps=4 \
+    --per_device_train_batch_size=16 \
+    --train_on_inputs=True \
+    --seed=42
+```
+#### Merge LoRA Adapter into HF/PyTorch Model Format
+Use `scripts/merge_lora_hf_checkpoint.py` and the arguments provided in the file to convert your `adapter_model.bin` to a full model.
+
+You may also use the adapter directly without converting using applications like [text-generation-webui](https://github.com/oobabooga/text-generation-webui)
+
+### Finetuning
+Example Finetune with FSDP + DeepSpeed (both optional)
+```bash
+OMP_NUM_THREADS=12 WORLD_SIZE=2 torchrun --nproc_per_node=2 --master_port=1234 finetune.py \
+    --base_model='elinas/llama-7b-hf-transformers-4.29' \
+    --data_path='dataset.json' \
+    --is_finetune \
+    --use_bf16 \
+    --num_train_epochs=3 \
+    --cutoff_len=2048 \
+    --group_by_length \
+    --val_set_size=2000 \
+    --output_dir='./7b-finetune' \
+    --gradient_accumulation_steps=4 \
+    --per_device_train_batch_size=16 \
+    --train_on_inputs=True \
+    --seed=42 \
+    --fsdp_params='full_shard auto_wrap' \
+    --deepspeed='path/to/deepspeed_config.json'
+```
+Note we used `bf16` - you must use it or `fp16`
+
+## **Roadmap**
+- [x] Use batch per device and gradient accumulation steps to calculate global steps
+- [x] Save LoRA adapter correctly every checkpoint instead of the full model
+- [x] Implement 4bit QLoRA
+- [x] Tokenize each unique dataset once and reload that using the same name when the original json file is passed
+- [x] Implement full finetuning as an option (not LoRA)
+- [x] Implement `flash-attention` for llama - https://github.com/HazyResearch/flash-attention/
+- [x] Working Deepspeed support
+- [ ] FP8 training using accelerate (Hopper GPUs / 4000-series)
+- [ ] Implement loading arguments from JSON
+
+## Development Log
+- 2023/06/10 - **Zeus LLM Trainer Release**
+   - Except for possibly needing to downgrade `bitsandbytes` to `0.37.2` to prevent OOM on 8bit training, this
+     release is ready and will come with a name change as stated in the past.
+   - The trainer has supported the use of DeepSpeed and more info can be found at the [DeepSpeed Repo](https://github.com/microsoft/deepspeed) 
+     & [DeepSpeed HF Docs](https://huggingface.co/docs/transformers/main_classes/deepspeed) 
+     and can be used in the trainer by passing the argument `--deepspeed <path_to_ds_config.json>` 
+   - `--fsdp_params` can be used to pass in an FSDP (Fully Shareded Data Parallel) definition like `--fsdp_params "full_shard auto_wrap"` definition directly into
+     the trainer as [outlined in the documentation here.](https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments.fsdp) 
+     This is useful when your model can't fit into a single GPU or you want to save VRAM, all at the cost of speed.
+   - The documentation has been updated below and a full changelog will be posted on the releases page. Older development
+     notes have been moved to the bottom of the `README`
+- 2023/06/02 - **4bit QLoRA test, release, and some notes**
+   - 4bit QLoRA was tested and it performed very well in both end result and performance overall. Using a rough estimate based on
+     compute I used, it is about 22% faster (or more) than 8bit LoRA, with the added benefit of fitting on smaller cards. Inference
+     was not impacted much if at all compared to 8bit and generates similar outputs in 4bit. Props to Tim Dettmers for releasing this
+     method and getting it integrated into Transformers.
+   - Pre-tokenization is almost ready, but not quite there, though I am comfortable with everything functioning here, except for the
+     untested finetune feature (which should work). I just don't have the time or resources to test a finetune right now.
+   - New name will be "Zeus-llm-trainer" and the repo name will be changed which will break remotes, so make sure to update your remote
+     repository or re-clone it.
+   - That's really it for now, and automatic handling of pre-tokenization using Arrow format will be finished soon.
+- 2023/05/30 - **pretokenization WIP & repo name change**
+   - **Important:** `lora_finetune.py` has been renamed to `finetune.py`
+   - Adding a way to pretokenize to save time when re-running training, especially for larger datasets
+   - I'm preparing to change the repo name soon, though I have not decided on a final name.
+- 2023/05/28 - **working on getting flash-attention functional**
+   - The current `flash-attn` library fails to install due to a torch import error and trying to install an older
+     version just results in other errors. Currently, there is an open issue about this and will be looking into it more.
+   - PyTorch SDP Attention was (re)-implemented but doesn't work right, so don't use it unless you want no training to happen due to abnormal loss.
+     Don't know how much time if any I will commit further to this since `flash-attn` seems like the better overall option
+     and you can already use `xformers` for memory savings.
+   - Another issue - the latest `bitsandbytes` still has a memory issue and will often OOM when saving a checkpoint when
+     training in 8 bit. I'm not sure if this is an issue in 4bit, but I'm training a 13B QLoRA with a decent chunk of memory free on a single 3090.
+   - **If you do an 8 bit lora, I recommend switching to `bitsandbytes==0.37.2` or roll the dice with the latest version.**
+- 2023/05/27 - **4bit QLoRA, fp16 training and more**
+   - 4bit QLora training has been implemented and is usable by calling the `--train_4bit` flag. No other configuration 
+     is needed on top of the current LoRA config. 
+   - LoRAs can be trained in fp16 now for improved training speed at the cost of vram, use `--train_fp16`
+   - Full finetuning is implemented using `--is_finetune` - The code is a bit messy and might not work 100% right, consider this completely untested.
+     <br>Note that you **need** to pass `--train_fp16` or it will default to 8bit.
+     If you use this argument, all LoRA arguments and operations will be bypassed in the trainer.
+   - optional optimizer selection:  `--optim="optm_name"` has been added if you don't want to use the default `adamw_torch`
+     `paged_adamw_8bit` was used in the QLoRA example. [Read about the different optimizers here](https://huggingface.co/docs/transformers/v4.29.1/en/perf_train_gpu_one#optimizer) <br>     If you are unsure, just keep it default or feel free to experiment, as some can add memory savings, though generally
+     at the expense of speed.
+   - optional gradient checkpointing: `--use_gradient_checkpointing` which can potentially save significant memory, once 
+     again at the cost of speed. **This should really only be used if you can't train the model at a batch size of 1.** [Read more on Gradient Checkpointing here](https://huggingface.co/docs/transformers/v4.18.0/en/performance#gradient-checkpointing)
+- 2023/05/25 - **larger models and possible issues**
+    - I've been testing larger models, specifically 30/33B (and I assume this would apply to 65B as well) but the gradient
+      "explosions" are not directly due to `xformers` - the attention method might make it worse, but I have experienced
+      the issue without it, using grouping and without, and currently trying to find out why. It might be my dataset, so
+      that is what I will be trying to change next. 
+    - The next release will include pre-tokenization and full finetuning, hence the project will be renamed to "Zeus"
 - 2023/05/21 - **working on multiple things at once**
     - I've updated the TODO list below in order of priority. 
     - Some changes in dev have been made like adding `--max_grad_norm`
@@ -32,101 +234,7 @@
        One must be picked over the other depending on calculation you prefer.
     - Implemented xformers as an option to replace the default attention method with `--use_xformers`
     - Argument name changes, will be documented.
-- 2023/05/08 - **Reworking trainer**
-
-**TODO**
-- [x] Use batch per device and gradient accumulation steps to calculate global steps
-- [x] Save LoRA adapter correctly every checkpoint instead of the full model
-- [ ] Tokenize each unique dataset once (separate script) to save pre-train time or tokenize every time by default
-- [ ] Implement full finetuning as an option (not LoRA)
-- [ ] Working Deepspeed support (currently untested, will test when I get back to 33b training)
-- [ ] FP8 training using accelerate (Hopper GPUs / 4000-series)
-- [ ] Implement loading arguments from JSON
-
-This repository contains code for reproducing the [Stanford Alpaca](https://github.com/tatsu-lab/stanford_alpaca) results using [low-rank adaptation (LoRA)](https://arxiv.org/pdf/2106.09685.pdf).
-We provide an Instruct model of similar quality to `text-davinci-003` that can run [on a Raspberry Pi](https://twitter.com/miolini/status/1634982361757790209) (for research),
-and the code is easily extended to the `13b`, `30b`, and `65b` models.
-
-In addition to the training code, which runs within hours on a single RTX 4090,
-we publish a script for downloading and inference on the foundation model and LoRA,
-as well as the resulting [LoRA weights themselves](https://huggingface.co/tloen/alpaca-lora-7b/tree/main).
-To fine-tune cheaply and efficiently, we use Hugging Face's [PEFT](https://github.com/huggingface/peft)
-as well as Tim Dettmers' [bitsandbytes](https://github.com/TimDettmers/bitsandbytes).
-
-Without hyperparameter tuning, the LoRA model produces outputs comparable to the Stanford Alpaca model. (Please see the outputs included below.) Further tuning might be able to achieve better performance; I invite interested users to give it a try and report their results.
-
-### Local Setup
-
-1. Install dependencies
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. For `bitsandbytes` Windows users can follow [these instructions](https://github.com/tloen/alpaca-lora/issues/17).
-
-*Note that `bitsandbytes` is not officially supported on Windows, nor is serious training recommended on it.*
-
-### LoRA Training (`lora_finetune.py`)
-
-This file contains a straightforward application of PEFT to the LLaMA model,
-as well as some code related to prompt construction and tokenization.
-PRs adapting this code to support larger models are always welcome.
-
-Example usage:
-
-```bash
-python lora_finetune.py \
-    --base_model 'elinas/llama-7b-hf-transformers-4.29' \
-    --data_path 'yahma/alpaca-cleaned' \
-    --output_dir './lora-alpaca'
-```
-
-We can also tweak our hyperparameters:
-
-```bash
-python lora_finetune.py \
-    --base_model 'elinas/llama-7b-hf-transformers-4.29' \
-    --data_path 'dataset.json' \
-    --output_dir './lora-alpaca' \
-    --gradient_accumulation_steps 1 \
-    --per_device_train_batch_size 4 \
-    --num_train_epochs 3 \
-    --learning_rate 1e-4 \
-    --cutoff_len 1024 \
-    --val_set_size 2000 \
-    --lora_r 64 \
-    --lora_alpha 128 \
-    --lora_dropout 0.05 \
-    --lora_target_modules '[q_proj,v_proj]' \
-    --train_on_inputs \
-    --group_by_length
-```
-
-Example DDP Usage (2 GPUs, adjust top line based on GPU count):
-```bash
-OMP_NUM_THREADS=12 WORLD_SIZE=2 torchrun --nproc_per_node=2 --master_port=1234 lora_finetune.py \
-    --base_model='elinas/llama-7b-hf-transformers-4.29' \
-    --data_path='dataset.json' \
-    --num_train_epochs=3 \
-    --cutoff_len=2048 \
-    --group_by_length \
-    --val_set_size=2000 \
-    --output_dir='./7b-lora' \
-    --lora_target_modules='[q_proj,v_proj,k_proj,o_proj]' \
-    --lora_r=128 \
-    --lora_alpha=256 \
-    --gradient_accumulation_steps=4 \
-    --per_device_train_batch_size=16 \
-    --train_on_inputs=True \
-    --seed=42
-```
-### Merge LoRA Adapter into HF/PyTorch Model Format
-Use `scripts/merge_lora_hf_checkpoint.py` and the arguments provided in the file to convert your `adapter_model.bin` to a full model.
-
-You may also use the adapter directly without converting using applications like [text-generation-webui](https://github.com/oobabooga/text-generation-webui)
-
-
+  
 Everything below this is "TODO" and not officially supported
 ------
 
@@ -185,246 +293,3 @@ docker-compose logs -f
 ```bash
 docker-compose down --volumes --rmi all
 ```
-
-### Notes
-
-- We can likely improve our model performance significantly if we had a better dataset. Consider supporting the [LAION Open Assistant](https://open-assistant.io/) effort to produce a high-quality dataset for supervised fine-tuning (or bugging them to release their data).
-- We're continually fixing bugs and conducting training runs, and the weights on the Hugging Face Hub are being updated accordingly. In particular, those facing issues with response lengths should make sure that they have the latest version of the weights and code.
-- Users with multiple GPUs should take a look [here](https://github.com/tloen/alpaca-lora/issues/8#issuecomment-1477490259).
-- We include the Stanford Alpaca dataset, which was made available under the ODC Attribution License.
-
-### Resources
-
-- [alpaca.cpp](https://github.com/antimatter15/alpaca.cpp), a native client for running Alpaca models on the CPU
-- [Alpaca-LoRA-Serve](https://github.com/deep-diver/Alpaca-LoRA-Serve), a ChatGPT-style interface for Alpaca models
-- [AlpacaDataCleaned](https://github.com/gururise/AlpacaDataCleaned), a project to improve the quality of the Alpaca dataset
-- [GPT-4 Alpaca Data](https://github.com/Instruction-Tuning-with-GPT-4/GPT-4-LLM) a project to port synthetic data creation to GPT-4
-- [dolly-15k-instruction-alpaca-format](https://huggingface.co/datasets/c-s-ale/dolly-15k-instruction-alpaca-format), an Alpaca-compatible version of [Databricks' Dolly 15k human-generated instruct dataset](https://github.com/databrickslabs/dolly/tree/master/data) (see [blog](https://www.databricks.com/blog/2023/04/12/dolly-first-open-commercially-viable-instruction-tuned-llm))
-- [Alpaca-LoRA MT](https://github.com/juletx/alpaca-lora-mt), a project to finetune models with [machine-translated Alpaca data](https://huggingface.co/datasets/HiTZ/alpaca_mt) in 6 Iberian languages: Portuguese, Spanish, Catalan, Basque, Galician and Asturian.
-- Various adapter weights (download at own risk):
-  - 7B:
-    - 3️⃣ <https://huggingface.co/tloen/alpaca-lora-7b>
-    - 3️⃣ <https://huggingface.co/samwit/alpaca7B-lora>
-    - **4️⃣ <https://huggingface.co/chansung/gpt4-alpaca-lora-7b>**
-    - 🚀 <https://huggingface.co/nomic-ai/gpt4all-lora>
-    - 🇧🇷 <https://huggingface.co/22h/cabrita-lora-v0-1>
-    - 🇨🇳 <https://huggingface.co/qychen/luotuo-lora-7b-0.1>
-    - 🇨🇳 <https://huggingface.co/ziqingyang/chinese-alpaca-lora-7b>
-    - 🇯🇵 <https://huggingface.co/kunishou/Japanese-Alapaca-LoRA-7b-v0>
-    - 🇫🇷 <https://huggingface.co/bofenghuang/vigogne-lora-7b>
-    - 🇹🇭 <https://huggingface.co/Thaweewat/thai-buffala-lora-7b-v0-1>
-    - 🇩🇪 <https://huggingface.co/thisserand/alpaca_lora_german>
-    - 🇵🇱 <https://huggingface.co/mmosiolek/polpaca-lora-7b>
-    - 🇵🇱 <https://huggingface.co/chrisociepa/alpaca-lora-7b-pl>
-    - 🇮🇹 <https://huggingface.co/teelinsan/camoscio-7b-llama>
-    - 🇷🇺 <https://huggingface.co/IlyaGusev/llama_7b_ru_turbo_alpaca_lora>
-    - 🇺🇦 <https://huggingface.co/robinhad/ualpaca-7b-llama>
-    - 🇮🇹 <https://huggingface.co/mchl-labs/stambecco-7b-plus>
-    - 🇪🇸 <https://huggingface.co/plncmm/guanaco-lora-7b>
-    - 🇬🇧 🇪🇸 🇵🇹 <https://huggingface.co/HiTZ/alpaca-lora-7b-en-pt-es-ca-eu-gl-at>
-  - 13B:
-    - 3️⃣ <https://huggingface.co/Angainor/alpaca-lora-13b>
-    - 3️⃣ <https://huggingface.co/chansung/alpaca-lora-13b>
-    - 3️⃣ <https://huggingface.co/mattreid/alpaca-lora-13b>
-    - 3️⃣ <https://huggingface.co/samwit/alpaca13B-lora>
-    - **4️⃣ <https://huggingface.co/chansung/gpt4-alpaca-lora-13b>**
-    - 🇯🇵 <https://huggingface.co/kunishou/Japanese-Alapaca-LoRA-13b-v0>
-    - 🇰🇷 <https://huggingface.co/chansung/koalpaca-lora-13b>
-    - 🇨🇳 <https://huggingface.co/facat/alpaca-lora-cn-13b>
-    - 🇨🇳 <https://huggingface.co/ziqingyang/chinese-alpaca-lora-13b>
-    - 🇪🇸 <https://huggingface.co/plncmm/guanaco-lora-13b>
-    - 🇮🇹 <https://huggingface.co/mchl-labs/stambecco-13b-plus>
-    - 🇬🇧 🇪🇸 🇵🇹 <https://huggingface.co/HiTZ/alpaca-lora-13b-en-pt-es-ca-eu-gl-at>
-  - 30B:
-    - 3️⃣ <https://huggingface.co/baseten/alpaca-30b>
-    - 3️⃣ <https://huggingface.co/chansung/alpaca-lora-30b>
-    - **4️⃣ <https://huggingface.co/chansung/gpt4-alpaca-lora-30b>**
-    - 🇯🇵 <https://huggingface.co/kunishou/Japanese-Alapaca-LoRA-30b-v0>
-    - 🇬🇧 🇪🇸 🇵🇹 <https://huggingface.co/HiTZ/alpaca-lora-30b-en-pt-es-ca-eu-gl-at>
-  - 65B
-    - <https://huggingface.co/chansung/alpaca-lora-65b>
-    - 🇬🇧 🇪🇸 🇵🇹 <https://huggingface.co/HiTZ/alpaca-lora-65b-en-pt-es-ca>
-- [alpaca-native](https://huggingface.co/chavinlo/alpaca-native), a replication using the original Alpaca code
-- [llama.onnx](https://github.com/tpoisonooo/llama.onnx), a project to inference alpaca with onnx format
-
-### Example outputs
-
-**Instruction**: Tell me about alpacas.
-
-**Alpaca-LoRA**: Alpacas are members of the camelid family and are native to the Andes Mountains of South America. They are known for their soft, luxurious fleece, which is used to make clothing, blankets, and other items. Alpacas are herbivores and graze on grasses and other plants. They are social animals and live in herds of up to 20 individuals.
-
-**Stanford Alpaca**: Alpacas are small, fluffy animals related to camels and llamas. They are native to Peru and Bolivia, and were first domesticated around 5,000 years ago. They are kept mainly for their fine, soft fleece, which is used to make knitwear and other garments. Alpacas are herd animals and live in small family groups, led by an older male. They are highly social animals and can form strong bonds with their owners.
-
-**text-davinci-003**: Alpacas are a domesticated species of South American camelid, similar to llamas. They are native to the Andes Mountains in South America and are kept as livestock for their soft, luxurious wool. Alpacas are social animals and live in herds of up to 20 individuals. They are typically kept in small herds of two to five animals, and are relatively easy to care for. Alpacas are herbivores and feed on grass, hay, and other vegetation. They are also known for their gentle and friendly nature, making them popular as pets.
-
----
-
-**Instruction**: Tell me about the president of Mexico in 2019.
-
-**Alpaca-LoRA**: The president of Mexico in 2019 was Andrés Manuel López Obrador, who took office on December 1, 2018. He is a member of the National Regeneration Movement (MORENA) political party and is the first left-wing president of Mexico since 1946. He is known for his anti-corruption and anti-neoliberal policies, as well as his commitment to improving the living conditions of the Mexican people.
-
-**Stanford Alpaca**: In 2019, Andres Manuel Lopez Obrador was sworn in as President of Mexico. He is the country’s 58th president and the first from the left-wing Morena party. He was elected in 2018 on a promise to combat corruption and reduce poverty and has faced criticism for his handling of the economy, crime and the country’s relationship with the United States. He is also known for his ambitious social welfare programs and has been praised for raising the minimum wage and providing aid to low-income families. He is seen as a champion of democracy and human rights in Mexico.
-
-**text-davinci-003**: The president of Mexico in 2019 is Andrés Manuel López Obrador, commonly known as AMLO. He is a Mexican politician who has been the President of Mexico since December 1, 2018. He is a member of the National Regeneration Movement (MORENA) party and previously served as the Head of Government of Mexico City from 2000 to 2005. He is a left-wing populist and has promised to reduce corruption and inequality in Mexico. He has also promised to increase public spending on social programs and infrastructure projects.
-
----
-
-**Instruction**: Tell me about the king of France in 2019.
-
-**Alpaca-LoRA**: The King of France in 2019 is Emmanuel Macron, who was elected in May 2017. He is the youngest president in the history of the Fifth Republic and the first president to be born after World War II. He is also the first president to have never held elected office before.
-
-**Stanford Alpaca**: In 2019, the King of France was Emmanuel Macron. He was sworn in as President of France on May 14, 2017, and has been leading the country ever since. He is a member of the centrist La République En Marche! Party. He is known for his reformist agenda and has faced a number of protests from both the right and left of the political spectrum. He is the youngest French president in history.
-
-**text-davinci-003**: The King of France is a largely symbolic role, as France is a republic. The current President of France is Emmanuel Macron, who was elected in 2017.
-
----
-
-**Instruction**: List all Canadian provinces in alphabetical order.
-
-**Alpaca-LoRA**: Alberta, British Columbia, Manitoba, New Brunswick, Newfoundland and Labrador, Nova Scotia, Ontario, Prince Edward Island, Quebec, Saskatchewan
-
-**Stanford Alpaca**: Alberta, British Columbia, Manitoba, New Brunswick, Newfoundland and Labrador, Nova Scotia, Ontario, Prince Edward Island, Quebec, Saskatchewan, Northwest Territories, Nunavut, Yukon.
-
-**text-davinci-003**:
-
-1. Alberta
-2. British Columbia
-3. Manitoba
-4. New Brunswick
-5. Newfoundland and Labrador
-6. Northwest Territories
-7. Nova Scotia
-8. Nunavut
-9. Ontario
-10. Prince Edward Island
-11. Quebec
-12. Saskatchewan
-13. Yukon
-
----
-
-**Instruction**: Write a Python program that prints the first 10 Fibonacci numbers.
-
-**Alpaca-LoRA**:
-
-```python
-def fibonacci(n):
-    if n == 0:
-        return 0
-    elif n == 1:
-        return 1
-    else:
-        return fibonacci(n-1) + fibonacci(n-2)
-
-print(fibonacci(10))
-```
-
-**Stanford Alpaca**:
-
-```python
-numbers = [0, 1]
-
-for i in range(2, 11):
-    numbers.append(numbers[i-2] + numbers[i-1])
-
-print(numbers)
-# Output: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]
-```
-
-**text-davinci-003**:
-
-```python
-# Fibonacci numbers are the numbers in the following integer sequence, called the Fibonacci sequence, and characterized by the fact that every number after the first two is the sum of the two preceding ones.
-
-# Fibonacci sequence: 0, 1, 1, 2, 3, 5, 8, 13, 21, 34, ...
-
-# Program:
-
-# Initialize the first two numbers of the Fibonacci sequence
-a = 0
-b = 1
-
-# Print the first 10 numbers of the Fibonacci sequence
-print(a)
-print(b)
-
-for i in range(2,10):
-    c = a + b
-    a = b
-    b = c
-    print(c)
-```
-
----
-
-**Instruction**: Write a program that prints the numbers from 1 to 100. But for multiples of three print 'Fizz' instead of the number and for the multiples of five print 'Buzz'. For numbers which are multiples of both three and five print 'FizzBuzz'.
-
-**Alpaca-LoRA**:
-
-```python
-for i in range(1, 101):
-    if i % 3 == 0 and i % 5 == 0:
-        print("FizzBuzz")
-    elif i % 3 == 0:
-        print("Fizz")
-    elif i % 5 == 0:
-        print("Buzz")
-    else:
-        print(i)
-```
-
-**Stanford Alpaca**:
-
-```python
-for i in range(1, 101):
-    if i % 3 == 0 and i % 5 == 0:
-        print('FizzBuzz')
-    elif i % 3 == 0:
-        print('Fizz')
-    elif i % 5 == 0:
-        print('Buzz')
-    else:
-        print(i)
-```
-
-**text-davinci-003**:
-
-```javascript
-for (let i = 1; i <= 100; i++) {
-  if (i % 3 === 0 && i % 5 === 0) {
-    console.log("FizzBuzz");
-  } else if (i % 3 === 0) {
-    console.log("Fizz");
-  } else if (i % 5 === 0) {
-    console.log("Buzz");
-  } else {
-    console.log(i);
-  }
-}
-```
-
----
-
-**Instruction**: Tell me five words that rhyme with 'shock'.
-
-**Alpaca-LoRA**: Flock, lock, rock, stock, and sock.
-
-**Stanford Alpaca**: Five words that rhyme with shock are: rock, pop, shock, cook, and snock.
-
-**text-davinci-003**:
-
-1. Block
-2. Lock
-3. Dock
-4. Clock
-5. Rock
-
----
-
-**Instruction**: Translate the sentence 'I have no mouth but I must scream' into Spanish.
-
-**Alpaca-LoRA**: No tengo boca pero tengo que gritar.
-
-**Stanford Alpaca**: No tengo boca, pero debo gritar.
-
-**text-davinci-003**: No tengo boca pero debo gritar.
