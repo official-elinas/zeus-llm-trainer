@@ -147,6 +147,8 @@ Note we used `bf16` - you must use it or `fp16`
 - [x] Implement `flash-attention` for llama - https://github.com/HazyResearch/flash-attention/
 - [x] Working Deepspeed support
 - [ ] FP8 training using accelerate (Hopper GPUs / 4000-series)
+- [ ] Add more sample templates (ie. Vicuna...)
+- [ ] Improve dataset loading (multiple files, different formats)
 - [ ] Implement loading arguments from JSON
 
 ## Development Log
