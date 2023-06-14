@@ -6,6 +6,7 @@ import warnings
 from pathlib import Path
 from typing import List
 
+import accelerate
 import datasets
 import fire
 import torch
@@ -347,6 +348,8 @@ def train(
 
     if fsdp_params == '':
         fsdp_params = False
+
+    accelerate.Accelerator(mixed_precision='fp8')
 
     # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.Trainer
     args = transformers.TrainingArguments(
