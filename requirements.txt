@@ -14,3 +14,5 @@ wandb
 git+https://github.com/huggingface/accelerate.git
 git+https://github.com/huggingface/transformers.git
 git+https://github.com/huggingface/peft.git@189a6b8e357ecda05ccde13999e4c35759596a67
+
+git+https://github.com/NVIDIA/TransformerEngine.git

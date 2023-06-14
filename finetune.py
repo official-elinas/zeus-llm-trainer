@@ -349,7 +349,7 @@ def train(
     if fsdp_params == '':
         fsdp_params = False
 
-    accelerate.Accelerator(mixed_precision='fp8')
+
 
     # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.Trainer
     args = transformers.TrainingArguments(
@@ -379,7 +379,7 @@ def train(
         fsdp=fsdp_params
         # **vars(training_args)
     )
-
+    accelerate.Accelerator(mixed_precision='fp8')
     trainer = transformers.Trainer(
         model=model,
         train_dataset=train_data,
@@ -397,8 +397,8 @@ def train(
     # Read more on torch.compile here and the performance improvements:
     # It currently is not supported on Windows
     # https://pytorch.org/get-started/pytorch-2.0/#pytorch-2x-faster-more-pythonic-and-as-dynamic-as-ever
-    if torch.__version__ >= "2" and sys.platform != "win32":
-        model = torch.compile(model)
+    # if torch.__version__ >= "2" and sys.platform != "win32":
+    #     model = torch.compile(model)
 
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
     # saves the trainer state parameters
