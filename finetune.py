@@ -103,6 +103,8 @@ def train(
     ddp = world_size != 1
     if ddp:
         device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)}
+        if fsdp_params != "":
+            device_map = "auto"
         gradient_accumulation_steps, global_batch_size = calculate_batches(global_batch_size,
                                                                            world_size,
                                                                            gradient_accumulation_steps,
