@@ -132,6 +132,7 @@ def train(
             f"warmup_ratio: {warmup_ratio}\n"
             f"cutoff_len: {cutoff_len}\n"
             f"val_set_size: {val_set_size}\n"
+            f"fsdp_params: {fsdp_params}\n"
         )
         if not is_finetune:
             print(
@@ -379,7 +380,8 @@ def train(
         fsdp=fsdp_params
         # **vars(training_args)
     )
-    accelerate.Accelerator(mixed_precision='fp8')
+    # accelerate.Accelerator(mixed_precision='fp8')
+
     trainer = transformers.Trainer(
         model=model,
         train_dataset=train_data,
