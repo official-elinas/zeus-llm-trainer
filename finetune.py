@@ -279,8 +279,9 @@ def train(
         # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
         # TODO LOOK INTO THIS VS PASSING fsdp + fsdp_config
         #  https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments.fsdp
-        model.is_parallelizable = True
-        model.model_parallel = True
+        if fsdp_params == "":
+            model.is_parallelizable = True
+            model.model_parallel = True
 
     if data_path.endswith(".json") or data_path.endswith(".jsonl"):
         data = load_dataset("json", data_files=data_path)
