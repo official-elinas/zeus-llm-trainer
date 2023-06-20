@@ -11,7 +11,7 @@ import datasets
 import fire
 import torch
 import transformers
-from transformers import TrainingArguments, BitsAndBytesConfig
+from transformers import TrainingArguments, BitsAndBytesConfig, AutoTokenizer, AutoModel
 from datasets import load_dataset, load_from_disk
 
 from peft import (
@@ -179,7 +179,7 @@ def train(
     torch_dtype = torch.float16 if train_fp16 else torch.bfloat16
 
     if not train_4bit:
-        model = LlamaForCausalLM.from_pretrained(
+        model = AutoModel.from_pretrained(
             base_model,
             load_in_8bit=load_in_8bit,
             torch_dtype=torch_dtype,
@@ -195,12 +195,12 @@ def train(
             bnb_4bit_use_double_quant=True,
             bnb_4bit_compute_dtype=torch.bfloat16
         )
-        model = LlamaForCausalLM.from_pretrained(
+        model = AutoModel.from_pretrained(
             base_model,
             quantization_config=nf4_config
         )
 
-    tokenizer = LlamaTokenizer.from_pretrained(base_model)
+    tokenizer = AutoTokenizer.from_pretrained(base_model)
 
     tokenizer.pad_token_id = (
         0  # unk. we want this to be different from the eos token
