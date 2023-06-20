@@ -195,7 +195,7 @@ def train(
             bnb_4bit_use_double_quant=True,
             bnb_4bit_compute_dtype=torch.bfloat16
         )
-        model = AutoModel.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             base_model,
             quantization_config=nf4_config
         )
