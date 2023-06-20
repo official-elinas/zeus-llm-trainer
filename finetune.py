@@ -11,7 +11,7 @@ import datasets
 import fire
 import torch
 import transformers
-from transformers import TrainingArguments, BitsAndBytesConfig, AutoTokenizer, AutoModel
+from transformers import TrainingArguments, BitsAndBytesConfig, AutoTokenizer, AutoModel, AutoModelForCausalLM
 from datasets import load_dataset, load_from_disk
 
 from peft import (
@@ -179,7 +179,7 @@ def train(
     torch_dtype = torch.float16 if train_fp16 else torch.bfloat16
 
     if not train_4bit:
-        model = AutoModel.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             base_model,
             load_in_8bit=load_in_8bit,
             torch_dtype=torch_dtype,
