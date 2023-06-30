@@ -58,6 +58,7 @@ def train(
     use_gradient_checkpointing: bool = False,
     use_flash_attn: bool = False,
     use_xformers: bool = False,
+    use_rope: bool = False,
     # lora-specific hyperparams
     is_lora: bool = True,
     lora_r: int = 8,
@@ -85,6 +86,10 @@ def train(
     if sum([train_fp16, train_bf16, train_4bit]) >= 2:
         raise Exception("The following parameters | --train_fp16 | --train_bf16 | --train_4bit | "
                         "cannot be used at the same time.")
+
+    if use_rope:
+        from utils.monkeypatches import apply_rotary_pos_emb
+        apply_rotary_pos_emb()
 
     if use_xformers and not use_flash_attn:
         try:
@@ -142,6 +147,7 @@ def train(
                 f"lora_target_modules: {lora_target_modules}\n"
             )
         print(
+            f"use_rope: {use_rope}\n"
             f"max_grad_norm: {max_grad_norm}\n"
             f"train_on_inputs: {train_on_inputs}\n"
             f"flash_attention_enabled: {use_flash_attn}\n"
@@ -185,7 +191,6 @@ def train(
         )
     else:
         # assume that default is 8bit, fp16 is optional (above) and the last option is 4bit
-        # TODO: look into "double quant" config
         # https://huggingface.co/blog/4bit-transformers-bitsandbytes#nested-quantization
         nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
