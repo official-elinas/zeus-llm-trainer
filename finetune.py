@@ -11,7 +11,7 @@ import datasets
 import fire
 import torch
 import transformers
-from transformers import TrainingArguments, BitsAndBytesConfig
+from transformers import TrainingArguments, BitsAndBytesConfig, AutoTokenizer, AutoModel, AutoModelForCausalLM
 from datasets import load_dataset, load_from_disk
 
 from peft import (
@@ -108,6 +108,8 @@ def train(
     ddp = world_size != 1
     if ddp:
         device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)}
+        if fsdp_params != "":
+            device_map = "auto"
         gradient_accumulation_steps, global_batch_size = calculate_batches(global_batch_size,
                                                                            world_size,
                                                                            gradient_accumulation_steps,
@@ -183,7 +185,7 @@ def train(
     torch_dtype = torch.float16 if train_fp16 else torch.bfloat16
 
     if not train_4bit:
-        model = LlamaForCausalLM.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             base_model,
             load_in_8bit=load_in_8bit,
             torch_dtype=torch_dtype,
@@ -198,12 +200,12 @@ def train(
             # bnb_4bit_use_double_quant=True,
             bnb_4bit_compute_dtype=torch.bfloat16
         )
-        model = LlamaForCausalLM.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             base_model,
             quantization_config=nf4_config
         )
 
-    tokenizer = LlamaTokenizer.from_pretrained(base_model)
+    tokenizer = AutoTokenizer.from_pretrained(base_model)
 
     tokenizer.pad_token_id = (
         0  # unk. we want this to be different from the eos token
@@ -282,8 +284,9 @@ def train(
         # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
         # TODO LOOK INTO THIS VS PASSING fsdp + fsdp_config
         #  https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments.fsdp
-        model.is_parallelizable = True
-        model.model_parallel = True
+        if fsdp_params == "":
+            model.is_parallelizable = True
+            model.model_parallel = True
 
     if data_path.endswith(".json") or data_path.endswith(".jsonl"):
         data = load_dataset("json", data_files=data_path)
