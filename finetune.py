@@ -1,17 +1,11 @@
 import os
-import sys
-import argparse
-import json
 import warnings
-from pathlib import Path
 from typing import List
 
-import accelerate
-import datasets
 import fire
 import torch
 import transformers
-from transformers import TrainingArguments, BitsAndBytesConfig, AutoTokenizer, AutoModel, AutoModelForCausalLM
+from transformers import BitsAndBytesConfig, AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset, load_from_disk
 
 from peft import (
@@ -21,8 +15,8 @@ from peft import (
     prepare_model_for_int8_training,
     set_peft_model_state_dict,
 )
-from transformers import LlamaForCausalLM, LlamaTokenizer
 
+from utils.monkeypatches import apply_rope_monkeypatch
 from utils.prompter import Prompter
 
 def train(
@@ -88,8 +82,7 @@ def train(
                         "cannot be used at the same time.")
 
     if use_rope:
-        from utils.monkeypatches import apply_rotary_pos_emb
-        apply_rotary_pos_emb()
+        apply_rope_monkeypatch()
 
     if use_xformers and not use_flash_attn:
         try:
