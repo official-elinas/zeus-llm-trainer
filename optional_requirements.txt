@@ -1,3 +1,4 @@
 ninja
-git+https://github.com/facebookresearch/xformers.git
-flash_attn
+# git+https://github.com/facebookresearch/xformers.git
+# flash_attn
+# pip install flash_attn==1.0.6 --no-build-isolation --no-cache --force-reinstall
