@@ -8,10 +8,10 @@
 * [Development Log](#development-log)
 
 ## Currently Supported Features
-* Full LoRA and finetune support - see run examples below on run configurations for each.
+* Full [LoRA](#lora-training) and [finetune](#finetuning) support - see run examples below on run configurations for each.
 * All HuggingFace Models supported out of the box, though some might have special configuration requirements and may not support all listed features.
-* Saving of full LoRA model and adapters
-* Simple prompt templating engine for LLMs and your own can be made easily. Examples can be found in the `./templates` directory.
+* Saving of full LoRA model and adapters - Context: there was a change in the PEFT library which stopped saving the adapter every checkpoint.
+* Simple prompt templating engine for LLMs and your own can be made easily. Examples can be found in the `./templates` [directory here](https://github.com/official-elinas/zeus-llm-trainer/tree/main/templates).
   Call your unique template with `--prompt_template_name='template_name_str'` or it will default to Alpaca format.
 * One time tokenization
    * The trainer will automatically tokenize your dataset once and reload in subsequent from the `./tokenized` directory.
@@ -25,11 +25,7 @@
    * Warmup Ratio (`--warmup_ratio=0.06` is the default)
    * Logging Steps (`--logging_steps=5` is the default)
    * Seed for training consistency between runs (`--seed=42` is the default)
-* Wandb Logging
-   * Project name (`wandb_project='project-name'`)
-   * Run name (`wandb_run_name='run-name'` - default random)
-   * Wandb watch (`--wandb_watch='all'` options: false | gradients | all - default False)
-* Optional attention replacement techniques for memory reduction and speed (must be installed)
+* **[LLaMA Only]** Optional attention replacement techniques for memory reduction and speed (must be installed)
    * `flash-attention` (`--use_flash_attn`)
    * `xformers` (`--use_xformers`)
 * Optimization Techniques
@@ -38,6 +34,10 @@
    * DeepSpeed - disabled by default - pass in a config like (`--deepspeed='/path/to/deepspeed_config.json'`)
    * Fully Sharded Data Parallel (FSDP) - disabled by default - (example `--fsdp_params "full_shard auto_wrap"`)
    * Gradient Checkpointing (`--use_gradient_checkpointing`) - saves significant memory at the cost of quite a bit of speed.
+* Wandb Logging
+   * Project name (`wandb_project='project-name'`)
+   * Run name (`wandb_run_name='run-name'` - default random)
+   * Wandb watch (`--wandb_watch='all'` options: false | gradients | all - default False)
 * Other Features
    * Alternate batch size calculation using `--global_batch_size=<global_bsz>` instead of `--gradient_accumulation_steps=<num_steps>`
    * Gradient normalization option (`max_grad_norm=1.0` default HF value)
@@ -54,7 +54,7 @@
 
 3. For `bitsandbytes` Windows users can follow [these instructions](https://github.com/tloen/alpaca-lora/issues/17). 
    If you are doing 8bit training, at the time of writing there seems to still exist a bug leading to OOM instances when 
-   saving in `bitsansbytes>0.37.2` so it's recommended to install that version if you will be doing **8bit/int4 training**.
+   saving in `bitsansbytes>0.37.2` so it's recommended to install that version if you will be doing **8bit/int8 training**.
 
 *Note that `bitsandbytes` is not officially supported on Windows, nor is serious training recommended on Windows.*
 
@@ -147,6 +147,8 @@ Note we used `bf16` - you must use it or `fp16`
 - [x] Implement `flash-attention` for llama - https://github.com/HazyResearch/flash-attention/
 - [x] Working Deepspeed support
 - [ ] FP8 training using accelerate (Hopper GPUs / 4000-series)
+- [ ] Add more sample templates (ie. Vicuna...)
+- [ ] Improve dataset loading (multiple files, different formats)
 - [ ] Implement loading arguments from JSON
 
 ## Development Log

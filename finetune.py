@@ -1,16 +1,11 @@
 import os
-import sys
-import argparse
-import json
 import warnings
-from pathlib import Path
 from typing import List
 
-import datasets
 import fire
 import torch
 import transformers
-from transformers import TrainingArguments, BitsAndBytesConfig
+from transformers import BitsAndBytesConfig, AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset, load_from_disk
 
 from peft import (
@@ -20,8 +15,8 @@ from peft import (
     prepare_model_for_int8_training,
     set_peft_model_state_dict,
 )
-from transformers import LlamaForCausalLM, LlamaTokenizer
 
+from utils.monkeypatches import apply_rope_monkeypatch
 from utils.prompter import Prompter
 
 def train(
@@ -57,6 +52,7 @@ def train(
     use_gradient_checkpointing: bool = False,
     use_flash_attn: bool = False,
     use_xformers: bool = False,
+    use_rope: bool = False,
     # lora-specific hyperparams
     is_lora: bool = True,
     lora_r: int = 8,
@@ -85,6 +81,9 @@ def train(
         raise Exception("The following parameters | --train_fp16 | --train_bf16 | --train_4bit | "
                         "cannot be used at the same time.")
 
+    if use_rope:
+        apply_rope_monkeypatch()
+
     if use_xformers and not use_flash_attn:
         try:
             from utils.monkeypatches import apply_xformers_monkeypatches
@@ -102,6 +101,8 @@ def train(
     ddp = world_size != 1
     if ddp:
         device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)}
+        if fsdp_params != "":
+            device_map = "auto"
         gradient_accumulation_steps, global_batch_size = calculate_batches(global_batch_size,
                                                                            world_size,
                                                                            gradient_accumulation_steps,
@@ -131,6 +132,7 @@ def train(
             f"warmup_ratio: {warmup_ratio}\n"
             f"cutoff_len: {cutoff_len}\n"
             f"val_set_size: {val_set_size}\n"
+            f"fsdp_params: {fsdp_params}\n"
         )
         if not is_finetune:
             print(
@@ -140,6 +142,7 @@ def train(
                 f"lora_target_modules: {lora_target_modules}\n"
             )
         print(
+            f"use_rope: {use_rope}\n"
             f"max_grad_norm: {max_grad_norm}\n"
             f"train_on_inputs: {train_on_inputs}\n"
             f"flash_attention_enabled: {use_flash_attn}\n"
@@ -175,7 +178,7 @@ def train(
     torch_dtype = torch.float16 if train_fp16 else torch.bfloat16
 
     if not train_4bit:
-        model = LlamaForCausalLM.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             base_model,
             load_in_8bit=load_in_8bit,
             torch_dtype=torch_dtype,
@@ -183,20 +186,19 @@ def train(
         )
     else:
         # assume that default is 8bit, fp16 is optional (above) and the last option is 4bit
-        # TODO: look into "double quant" config
         # https://huggingface.co/blog/4bit-transformers-bitsandbytes#nested-quantization
         nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_use_double_quant=True,
+            # bnb_4bit_use_double_quant=True,
             bnb_4bit_compute_dtype=torch.bfloat16
         )
-        model = LlamaForCausalLM.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             base_model,
             quantization_config=nf4_config
         )
 
-    tokenizer = LlamaTokenizer.from_pretrained(base_model)
+    tokenizer = AutoTokenizer.from_pretrained(base_model)
 
     tokenizer.pad_token_id = (
         0  # unk. we want this to be different from the eos token
@@ -275,8 +277,9 @@ def train(
         # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
         # TODO LOOK INTO THIS VS PASSING fsdp + fsdp_config
         #  https://huggingface.co/docs/transformers/main_classes/trainer#transformers.TrainingArguments.fsdp
-        model.is_parallelizable = True
-        model.model_parallel = True
+        if fsdp_params == "":
+            model.is_parallelizable = True
+            model.model_parallel = True
 
     if data_path.endswith(".json") or data_path.endswith(".jsonl"):
         data = load_dataset("json", data_files=data_path)
@@ -348,6 +351,8 @@ def train(
     if fsdp_params == '':
         fsdp_params = False
 
+
+
     # https://huggingface.co/docs/transformers/main_classes/trainer#transformers.Trainer
     args = transformers.TrainingArguments(
         per_device_train_batch_size=per_device_train_batch_size,
@@ -376,6 +381,7 @@ def train(
         fsdp=fsdp_params
         # **vars(training_args)
     )
+    # accelerate.Accelerator(mixed_precision='fp8')
 
     trainer = transformers.Trainer(
         model=model,
@@ -394,8 +400,8 @@ def train(
     # Read more on torch.compile here and the performance improvements:
     # It currently is not supported on Windows
     # https://pytorch.org/get-started/pytorch-2.0/#pytorch-2x-faster-more-pythonic-and-as-dynamic-as-ever
-    if torch.__version__ >= "2" and sys.platform != "win32":
-        model = torch.compile(model)
+    # if torch.__version__ >= "2" and sys.platform != "win32":
+    #     model = torch.compile(model)
 
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
     # saves the trainer state parameters
