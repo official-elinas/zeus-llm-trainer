@@ -16,7 +16,6 @@ from peft import (
     set_peft_model_state_dict,
 )
 
-from utils.monkeypatches import apply_rope_monkeypatch
 from utils.prompter import Prompter
 
 def train(
@@ -82,6 +81,7 @@ def train(
                         "cannot be used at the same time.")
 
     if use_rope:
+        from utils.monkeypatches import apply_rope_monkeypatch
         apply_rope_monkeypatch()
 
     if use_xformers and not use_flash_attn:
