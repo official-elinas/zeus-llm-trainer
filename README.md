@@ -18,7 +18,7 @@
 * Numerous arguments including, but not limited to (use `python finetune.py -h` for a full list of arguments or take a look at `finetune.py`)
    * bf16 and fp16 support (`--use_bf16` OR `--use_fp16`)
    * Optimizer parameter such as `adamw_torch`, `adamw_bnb_8bit`, and more with the default `adamw_torch_fused`.
-     Use `--optim='optimizer_name'` to change this. 
+     Use `--optim='optimizer_name'` to change this. See the full list of [optimizers here](#list-of-optimizers-to-use-with---optim-flag)
    * Validation dataset split (`--val_set_size=num_samples`)
       * Will split your dataset into `train` and `val` datasets with the number of samples defined by `--val_set_size=num_samples` 
         or set it to 0 not perform validation. 
@@ -40,7 +40,7 @@
    * Wandb watch (`--wandb_watch='all'` options: false | gradients | all - default False)
 * Other Features
    * Alternate batch size calculation using `--global_batch_size=<global_bsz>` instead of `--gradient_accumulation_steps=<num_steps>`
-   * Gradient normalization option (`max_grad_norm=1.0` default HF value)
+   * Gradient normalization option (`--max_grad_norm=1.0` default HF value)
 
 
 ## Local Setup
@@ -137,6 +137,30 @@ OMP_NUM_THREADS=12 WORLD_SIZE=2 torchrun --nproc_per_node=2 --master_port=1234 f
     --deepspeed='path/to/deepspeed_config.json'
 ```
 Note we used `bf16` - you must use it or `fp16`
+
+#### List of Optimizers to use with `--optim` flag
+<details>
+    <summary>Click here for a list of optimizers</summary><br>
+<b>ADAMW_HF = "adamw_hf"</b><br>
+<b>ADAMW_TORCH = "adamw_torch"</b><br>  
+<b>ADAMW_TORCH_FUSED = "adamw_torch_fused"</b><br> 
+ADAMW_TORCH_XLA = "adamw_torch_xla"<br>  
+<b>ADAMW_APEX_FUSED = "adamw_apex_fused"</b><br>  
+ADAFACTOR = "adafactor"<br>  
+ADAMW_ANYPRECISION = "adamw_anyprecision"<br>  
+SGD = "sgd"<br>  
+ADAGRAD = "adagrad"<br>  
+<b>ADAMW_BNB = "adamw_bnb_8bit"</b><br> 
+<b>ADAMW_8BIT = "adamw_8bit"</b> - just an alias for adamw_bnb_8bit<br> 
+LION_8BIT = "lion_8bit"<br>  
+LION = "lion_32bit"<br>  
+PAGED_ADAMW = "paged_adamw_32bit"<br>  
+PAGED_ADAMW_8BIT = "paged_adamw_8bit"<br>  
+PAGED_LION = "paged_lion_32bit"<br>  
+PAGED_LION_8BIT = "paged_lion_8bit"<br>
+
+*Please be aware that changing optimizers can have a significant impact on your model for better or for worse. Common ones to use are in bold.
+</details>
 
 ## **Roadmap**
 - [x] Use batch per device and gradient accumulation steps to calculate global steps
