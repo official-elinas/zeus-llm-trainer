@@ -16,7 +16,6 @@ from peft import (
     set_peft_model_state_dict,
 )
 
-from utils.monkeypatches import apply_rope_monkeypatch
 from utils.prompter import Prompter
 
 def train(
@@ -82,6 +81,7 @@ def train(
                         "cannot be used at the same time.")
 
     if use_rope:
+        from utils.monkeypatches import apply_rope_monkeypatch
         apply_rope_monkeypatch()
 
     if use_xformers and not use_flash_attn:
@@ -91,8 +91,11 @@ def train(
         except ModuleNotFoundError:
             print('Xformers module not found. Skipping')
     elif use_flash_attn and not use_xformers:
-        from utils.monkeypatches import apply_flash_attention_monkeypatch
-        apply_flash_attention_monkeypatch()
+        try:
+            from utils.monkeypatches import apply_flash_attention_monkeypatch
+            apply_flash_attention_monkeypatch()
+        except ModuleNotFoundError:
+            print('flash_attn module not found. Skipping')
 
     prompter = Prompter(prompt_template_name)
 
