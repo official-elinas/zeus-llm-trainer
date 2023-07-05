@@ -91,8 +91,11 @@ def train(
         except ModuleNotFoundError:
             print('Xformers module not found. Skipping')
     elif use_flash_attn and not use_xformers:
-        from utils.monkeypatches import apply_flash_attention_monkeypatch
-        apply_flash_attention_monkeypatch()
+        try:
+            from utils.monkeypatches import apply_flash_attention_monkeypatch
+            apply_flash_attention_monkeypatch()
+        except ModuleNotFoundError:
+            print('flash_attn module not found. Skipping')
 
     prompter = Prompter(prompt_template_name)
 
