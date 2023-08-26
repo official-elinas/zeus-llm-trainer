@@ -52,9 +52,7 @@
 2. If you're using `flash_attn` or `xformers` install the `ninja` package **first** and manually install either one in
    `optional_requirements.txt`
 
-3. For `bitsandbytes` Windows users can follow [these instructions](https://github.com/tloen/alpaca-lora/issues/17). 
-   If you are doing 8bit training, at the time of writing there seems to still exist a bug leading to OOM instances when 
-   saving in `bitsansbytes>0.37.2` so it's recommended to install that version if you will be doing **8bit/int8 training**.
+3. For `bitsandbytes` Windows users can follow [these instructions](https://github.com/tloen/alpaca-lora/issues/17).
 
 *Note that `bitsandbytes` is not officially supported on Windows, nor is serious training recommended on Windows.*
 

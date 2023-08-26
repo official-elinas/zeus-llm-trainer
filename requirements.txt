@@ -12,8 +12,8 @@ deepspeed
 wandb
 deepspeed
 # gradio
-git+https://github.com/huggingface/accelerate.git@665d5180fcc01d5700f7a9aa3f9bdb75c6055dce
-git+https://github.com/huggingface/transformers.git@8f093fb799246f7dd9104ff44728da0c53a9f67a
-git+https://github.com/huggingface/peft.git@189a6b8e357ecda05ccde13999e4c35759596a67
+git+https://github.com/huggingface/accelerate.git@e2ae254008061b3e53fc1c97f88d65743a857e75
+git+https://github.com/huggingface/transformers.git@686c68f64c9d0181bd54d4d2e2446543c3eca1fa
+git+https://github.com/huggingface/peft.git@8c17d556a8fe9522e10d73d7bd3fad46a6ecae14
 
 # git+https://github.com/NVIDIA/TransformerEngine.git
